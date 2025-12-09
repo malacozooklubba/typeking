@@ -46,7 +46,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
   const float green = (float)(0.5 + 0.5 * SDL_sin(now + SDL_PI_D * 2 / 3));
   const float blue = (float)(0.5 + 0.5 * SDL_sin(now + SDL_PI_D * 4 / 3));
 
-  drawDebugInfo(renderer, "Hello World!");
+  // drawDebugInfo(renderer, "Hello World!");
   SDL_SetRenderDrawColorFloat(renderer, red, green, blue, 255);
 
   SDL_RenderClear(renderer);
