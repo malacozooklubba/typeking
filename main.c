@@ -9,14 +9,6 @@ static SDL_Renderer *renderer = NULL;
 static int width = 640;
 static int height = 480;
 
-void drawDebugInfo(SDL_Renderer *renderer, char *texts[]) {
-  // SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-  // const int textCount = *(&texts + 1) - texts;
-  // for (int i = 0; i < textCount; i++) {
-  //   SDL_RenderDebugText(renderer, 0, i * 100, texts[i]);
-  // }
-}
-
 SDL_AppResult SDL_AppInit(__attribute__((unused)) void **appstate,
                           __attribute__((unused)) int argc,
                           __attribute__((unused)) char *argv[]) {
