@@ -1,11 +1,13 @@
-CFLAGS = -Wall -Wextra -std=c99
 SDL_FLAGS = $(shell pkg-config --cflags --libs sdl3)
 
 all:
-	gcc $(CFLAGS) $(SDL_FLAGS) -o bin/square_game square_game.c
+	gcc --debug $(SDL_FLAGS) -o bin/main main.c
+
+run: all
+	SDL_VIDEODRIVER=x11 bin/main
 
 release:
-	gcc $(CFLAGS) $(SDL_FLAGS) -O3 -o bin/square_game square_game.c
+	gcc $(SDL_FLAGS) -O3 -o bin/main main.c
 
 clean:
-	rm -f main square_game
+	rm -f main
