@@ -1,14 +1,12 @@
+#include "fps_counter.h"
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_log.h>
-#include <SDL3/SDL_main.h>
 #include <SDL3/SDL_render.h>
-#include <SDL3/SDL_stdinc.h>
 
-int countedFrames = 0;
-Uint64 lastTime, currentTime = 0;
-float fps = 0;
+static int countedFrames = 0;
+static Uint64 lastTime, currentTime = 0;
+static float fps = 0;
 
-void UpdateFps() {
+void updateFps() {
   currentTime = SDL_GetTicks();
 
   if (currentTime - lastTime >= 200) {
@@ -20,7 +18,9 @@ void UpdateFps() {
   countedFrames++;
 }
 
-void DrawFps(SDL_Renderer *renderer) {
+void drawFps(SDL_Renderer *renderer) {
+  updateFps();
+
   // 5 digits for fps is enough, surely
   char fpsText[5];
 

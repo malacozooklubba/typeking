@@ -1,5 +1,5 @@
 #define SDL_MAIN_USE_CALLBACKS 1
-#include "fps_counter.c"
+#include "fps_counter.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
@@ -52,26 +52,26 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
 }
 
 SDL_AppResult SDL_AppIterate(void *appstate) {
-  struct appState *state = (struct appState *)appstate;
-
   SDL_FRect rect = {.x = 0, .y = 0, .w = width, .h = height};
   const double now = ((double)SDL_GetTicks()) / 1000.0;
   const float red = (float)(0.5 + 0.5 * SDL_sin(now));
   const float green = (float)(0.5 + 0.5 * SDL_sin(now + SDL_PI_D * 2 / 3));
   const float blue = (float)(0.5 + 0.5 * SDL_sin(now + SDL_PI_D * 4 / 3));
 
+  /* ==== Render Loop ==== */
   SDL_RenderClear(renderer);
 
   SDL_SetRenderDrawColorFloat(renderer, red, green, blue,
                               SDL_ALPHA_OPAQUE_FLOAT);
   SDL_RenderFillRect(renderer, &rect);
 
-  UpdateFps();
-  DrawFps(renderer);
+  // DrawFps
+  drawFps(renderer);
 
   // Black background
   SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
   SDL_RenderPresent(renderer);
+  /* ===================== */
 
   return SDL_APP_CONTINUE;
 }
