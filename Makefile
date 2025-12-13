@@ -7,6 +7,9 @@ all:
 run: all
 	SDL_VIDEODRIVER=x11 bin/main
 
+macos-run: all
+	SDL_RENDER_DRIVER=metal bin/main
+
 release:
 	gcc $(SDL_FLAGS) -O3 -o bin/main $(FILES)
 
