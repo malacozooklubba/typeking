@@ -1,0 +1,23 @@
+---
+BasedOnStyle: LLVM
+
+# Force function name and return type together
+# BreakAfterOpenBracket: true
+
+# Break before the parameter list
+BreakBeforeBraces: Allman
+BraceWrapping:
+  AfterFunction: true
+
+# Force parameters to break
+BinPackParameters: false
+AllowAllParametersOfDeclarationOnNextLine: false
+AllowAllArgumentsOnNextLine: false
+
+# Indentation
+IndentWidth: 4
+ContinuationIndentWidth: 4
+
+# Line length (important so clang-format doesn't keep it on one line)
+ColumnLimit: 80
+---
