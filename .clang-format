@@ -1,19 +1,6 @@
 ---
 BasedOnStyle: LLVM
 
-# Force function name and return type together
-# BreakAfterOpenBracket: true
-
-# Break before the parameter list
-BreakBeforeBraces: Allman
-BraceWrapping:
-  AfterFunction: true
-
-# Force parameters to break
-BinPackParameters: false
-AllowAllParametersOfDeclarationOnNextLine: false
-AllowAllArgumentsOnNextLine: false
-
 # Indentation
 IndentWidth: 4
 ContinuationIndentWidth: 4
