@@ -1,0 +1,41 @@
+#pragma once
+
+#include <SDL3/SDL_render.h>
+#include <stdbool.h>
+
+typedef enum {
+    UI_ALIGN_START,   // Left alignment
+    UI_ALIGN_CENTER,  // Center alignment
+    UI_ALIGN_END      // Right alignment
+} UITextAlign;
+
+typedef struct {
+    float top;
+    float right;
+    float bottom;
+    float left;
+} UIPadding;
+
+typedef struct {
+    float x;
+    float y;
+    float width;
+    float height;
+    UIPadding padding;
+    SDL_Color bg_color;
+    SDL_Color text_color;
+    SDL_Color border_color;
+    float border_width;
+    const char *text;
+    float font_size;
+    UITextAlign align;
+} UITextBox;
+
+// Initialize a text box with default values
+UITextBox uiTextBoxCreate(float x, float y, float width, float height);
+
+// Draw a text box with background, border, padding, and multi-line text
+void uiTextBoxDraw(SDL_Renderer *renderer, const UITextBox *box);
+
+// Measure the required height for a text box given its width and text content
+float uiTextBoxMeasureHeight(const UITextBox *box);
