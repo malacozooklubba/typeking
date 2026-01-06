@@ -23,7 +23,6 @@ UITextBox uiTextBoxCreate(float x, float y, float width, float height) {
     return box;
 }
 
-// Helper function to calculate aligned X position
 static inline float calculateAlignedX(float base_x, float max_width,
                                       float line_width, UITextAlign align) {
     switch (align) {
@@ -37,14 +36,32 @@ static inline float calculateAlignedX(float base_x, float max_width,
     }
 }
 
+static inline float calculateAlignedY(float base_y, float max_height,
+                                      float line_height, UITextAlign align) {
+    switch (align) {
+    case UI_ALIGN_CENTER:
+        return base_y + (max_height - line_height) / 2.0f;
+    case UI_ALIGN_END:
+        return base_y + (max_height - line_height);
+    case UI_ALIGN_START:
+    default:
+        return base_y;
+    }
+}
+
 // Helper function to render a line of text with alignment
 static inline void renderAlignedLine(SDL_Renderer *renderer,
                                      const char *line_buffer, float base_x,
-                                     float text_y, float max_width,
-                                     const UITextBox *box) {
+                                     float base_y, float max_width,
+                                     float max_height, const UITextBox *box) {
     float line_width =
         textRenderMeasureVisibleWidth(line_buffer, box->font_size);
     float text_x = calculateAlignedX(base_x, max_width, line_width, box->align);
+
+    float line_height = textRenderGetLineHeight(box->font_size);
+    float text_y =
+        calculateAlignedY(base_y, max_height, line_height, box->align);
+
     textRenderDraw(renderer, line_buffer, text_x, text_y, box->font_size,
                    box->text_color);
 }
@@ -83,6 +100,7 @@ void uiTextBoxDraw(SDL_Renderer *renderer, const UITextBox *box) {
         float text_y = box->y + box->padding.top;
         float line_height = textRenderGetLineHeight(box->font_size);
         float max_width = box->width - box->padding.left - box->padding.right;
+        float max_height = box->height - box->padding.top - box->padding.bottom;
 
         // Calculated space width
         float space_width;
@@ -98,9 +116,9 @@ void uiTextBoxDraw(SDL_Renderer *renderer, const UITextBox *box) {
         while (*p) {
             // Check for word boundary (space or end of text)
             if (*p == ' ' || *(p + 1) == '\0') {
-                // Calculate word length (include current char if not space)
-                int word_len =
-                    (*p == ' ') ? (p - word_start) : (p - word_start + 1);
+                // Calculate word length
+                // Include word boundary as part of word
+                int word_len = (p - word_start + 1);
 
                 if (word_len > 0 && word_len < 64) {
                     char word_buffer[64];
@@ -121,14 +139,12 @@ void uiTextBoxDraw(SDL_Renderer *renderer, const UITextBox *box) {
                             // Draw current line and start new one
                             line_buffer[line_pos] = '\0';
                             renderAlignedLine(renderer, line_buffer, base_x,
-                                              text_y, max_width, box);
+                                              text_y, max_width, max_height,
+                                              box);
+
                             text_y += line_height;
                             line_pos = 0;
                             current_line_width = 0.0f;
-                        } else {
-                            // Add space if continuing line
-                            line_buffer[line_pos++] = ' ';
-                            current_line_width += space_width;
                         }
                     }
 
@@ -138,6 +154,9 @@ void uiTextBoxDraw(SDL_Renderer *renderer, const UITextBox *box) {
                         line_pos += word_len;
                         current_line_width += word_width;
                     }
+                } else {
+                    // Word is longer than max buffer size
+                    SDL_Log("Word is longer than max buffer size!");
                 }
 
                 word_start = p + 1;
@@ -150,7 +169,7 @@ void uiTextBoxDraw(SDL_Renderer *renderer, const UITextBox *box) {
         if (line_pos > 0) {
             line_buffer[line_pos] = '\0';
             renderAlignedLine(renderer, line_buffer, base_x, text_y, max_width,
-                              box);
+                              max_height, box);
         }
     }
 }

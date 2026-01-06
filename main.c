@@ -1,18 +1,142 @@
 #include "debug_ui.h"
 #include "text_render.h"
 #include "ui.h"
+#include <SDL3/SDL_keycode.h>
+#include <SDL3/SDL_oldnames.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
 
 #define SDL_MAIN_USE_CALLBACKS 1
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
+#define FONT_SIZE 32.0f
+#define MAX_WORD_COUNT 5
+#define MAX_WORD_LENGTH 32
+
+typedef enum {
+    LOBBY,
+    TYPING,
+    RESULTS,
+} GameState;
+
 const char game_name[] = "Type King";
+
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
-static int width = 1024;
-static int height = 720;
-static int font_size = 24.0f;
+static int window_width = 1024;
+static int window_height = 720;
 static bool debug_info = false;
+static GameState game_state = LOBBY;
+
+// Typing game state variables
+static char input_buffer[MAX_WORD_LENGTH * MAX_WORD_COUNT];
+static int input_buffer_pos = 0;
+
+void enterLobbyMode(void) {
+    game_state = LOBBY;
+    SDL_Log("Entering lobby mode");
+    SDL_StopTextInput(window);
+}
+
+void enterTypingMode() {
+    game_state = TYPING;
+    SDL_Log("Entering typing mode");
+    SDL_StartTextInput(window);
+}
+
+void enterResultsMode() {
+    game_state = RESULTS;
+    SDL_Log("Entering results mode");
+    SDL_StopTextInput(window);
+}
+
+void lobbyGameState() {
+    UITextBox hello_message =
+        uiTextBoxCreate(0.0f, 0.0f, window_width, window_height);
+
+    hello_message.text = "PRESS ENTER TO START";
+    hello_message.font_size = 32.0f;
+    hello_message.align = UI_ALIGN_CENTER;
+
+    uiTextBoxDraw(renderer, &hello_message);
+}
+
+void typingGameState() {
+    const float window_padding = 50.0f;
+
+    UITextBox box1 = uiTextBoxCreate(window_padding, 50.0f,
+                                     window_width - window_padding * 2, 150.0f);
+
+    box1.text = input_buffer;
+    box1.font_size = 32.0f;
+    box1.align = UI_ALIGN_START;
+
+    uiTextBoxDraw(renderer, &box1);
+}
+
+void resultsGameState() {}
+
+void addWord(char *word) {}
+
+void loadWords() {
+    FILE *file = fopen("words/oxford_3000.txt", "r");
+
+    if (file == NULL) {
+        SDL_Log("Could not open words file");
+        return;
+    }
+
+    // Seed random number generator
+    srand(time(NULL));
+
+    int total_lines = 0;
+    char buffer[64];
+    int current_line = 0;
+
+    while (fgets(buffer, sizeof(buffer), file)) {
+        total_lines++;
+    }
+
+    SDL_Log("File line when count: %d", total_lines);
+
+    int random_line_indices[MAX_WORD_COUNT];
+    for (int i = 0; i < MAX_WORD_COUNT; i++) {
+        random_line_indices[i] = rand() % total_lines;
+    }
+
+    // TODO: Sort random_line_indices so this can be done in a single pass
+    // Then randomize the order of the lines (words) before going into typing
+    for (int i = 0; i < MAX_WORD_COUNT; i++) {
+        rewind(file);
+        int current_line = 0;
+
+        while (current_line < random_line_indices[i] &&
+               fgets(buffer, sizeof(buffer), file)) {
+            current_line++;
+        }
+
+        // Read the target line
+        if (fgets(buffer, sizeof(buffer), file)) {
+            // Remove trailing newline if present
+            size_t len = strlen(buffer);
+            if (len > 0 && buffer[len - 1] == '\n') {
+                buffer[len - 1] = '\0';
+            }
+
+            // Append to output buffer
+            if (i > 0) {
+                strcat(input_buffer, " "); // Add space separator
+            }
+            strcat(input_buffer, buffer);
+        }
+    }
+
+    printf("%s\n", input_buffer);
+
+    fclose(file);
+}
 
 SDL_AppResult SDL_AppInit(__attribute__((unused)) void **appstate,
                           __attribute__((unused)) int argc,
@@ -25,7 +149,7 @@ SDL_AppResult SDL_AppInit(__attribute__((unused)) void **appstate,
         return SDL_APP_FAILURE;
     }
 
-    if (!SDL_CreateWindowAndRenderer(game_name, width, height,
+    if (!SDL_CreateWindowAndRenderer(game_name, window_width, window_height,
                                      SDL_WINDOW_RESIZABLE, &window,
                                      &renderer)) {
 
@@ -34,12 +158,14 @@ SDL_AppResult SDL_AppInit(__attribute__((unused)) void **appstate,
     }
 
     if (!textRenderInit(renderer, "./bin/font/JetBrainsMono-Regular.ttf",
-                        font_size)) {
+                        FONT_SIZE)) {
         SDL_Log("Failed to initialize text rendering");
         return SDL_APP_FAILURE;
     }
 
+    loadWords();
     debugUIInit();
+    enterLobbyMode();
 
     SDL_Log("Press F3 to toggle debug UI");
 
@@ -53,13 +179,45 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
         return SDL_APP_SUCCESS;
     }
     if (event->type == SDL_EVENT_WINDOW_RESIZED) {
-        SDL_GetWindowSizeInPixels(window, &width, &height);
+        SDL_GetWindowSizeInPixels(window, &window_width, &window_height);
     }
     if (event->type == SDL_EVENT_KEY_DOWN) {
         if (event->key.key == SDLK_F3) {
             debug_info = !debug_info;
             SDL_Log("Debug UI %s", debug_info ? "enabled" : "disabled");
         }
+    }
+
+    switch (game_state) {
+    case LOBBY:
+        if (event->type == SDL_EVENT_KEY_DOWN) {
+            if (event->key.key == SDLK_RETURN) {
+                enterTypingMode();
+            }
+        }
+        break;
+    case TYPING:
+        if (event->type == SDL_EVENT_KEY_DOWN) {
+            if (event->key.key == SDLK_BACKSPACE) {
+                // Remove last character from input buffer
+                if (input_buffer_pos > 0) {
+                    input_buffer_pos--;
+                    input_buffer[input_buffer_pos] = '\0';
+                }
+            }
+        }
+
+        if (event->type == SDL_EVENT_TEXT_INPUT) {
+            // Add text in event to input buffer
+            if (input_buffer_pos < 1024) {
+                input_buffer[input_buffer_pos++] = event->text.text[0];
+                // SDL_Log("Input buffer: %s", input_buffer);
+            }
+        }
+        break;
+    case RESULTS:
+        game_state = LOBBY;
+        break;
     }
 
     return SDL_APP_CONTINUE;
@@ -69,46 +227,25 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     // Reset draw calls at the start of each frame
     debugUIResetDrawCalls();
 
-    const float window_padding = 50.0f;
-
     /* ==== Render Loop ==== */
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
 
-    // Text box with START alignment (default)
-    UITextBox box1 = uiTextBoxCreate(window_padding, 50.0f,
-                                     width - window_padding * 2, 150.0f);
-    box1.text = "This text is aligned to the start (left). Long lines wrap "
-                "naturally at word boundaries. Pretty cool, huh?";
-    box1.font_size = 24.0f;
-    box1.align = UI_ALIGN_START;
-    uiTextBoxDraw(renderer, &box1);
-
-    // // Text box with CENTER alignment
-    // UITextBox box2 = uiTextBoxCreate(window_padding, 220.0f,
-    //                                  width - window_padding * 2, 150.0f);
-    // box2.text = "This text is centered within the box. "
-    //             "Each line is individually centered based on its width.";
-    // box2.font_size = 24.0f;
-    // box2.align = UI_ALIGN_CENTER;
-    // box2.bg_color = (SDL_Color){20, 40, 60, 255};
-    // box2.border_color = (SDL_Color){80, 120, 160, 255};
-    // uiTextBoxDraw(renderer, &box2);
-
-    // // Text box with END alignment
-    // UITextBox box3 = uiTextBoxCreate(window_padding, 390.0f,
-    //                                  width - window_padding * 2, 150.0f);
-    // box3.text = "This text is aligned to the end (right). "
-    //             "Perfect for right-to-left text or special layouts!";
-    // box3.font_size = 24.0f;
-    // box3.align = UI_ALIGN_END;
-    // box3.bg_color = (SDL_Color){40, 20, 60, 255};
-    // box3.border_color = (SDL_Color){120, 80, 160, 255};
-    // uiTextBoxDraw(renderer, &box3);
+    // Run game state machine
+    switch (game_state) {
+    case LOBBY:
+        lobbyGameState();
+        break;
+    case TYPING:
+        typingGameState();
+        break;
+    case RESULTS:
+        break;
+    }
 
     // Draw debug UI (if enabled)
     if (debug_info) {
-        debugUIDraw(renderer, width, height);
+        debugUIDraw(renderer, window_width, window_height);
     }
 
     SDL_RenderPresent(renderer);
