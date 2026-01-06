@@ -22,7 +22,6 @@ typedef struct {
 } GlyphCacheEntry;
 
 typedef struct {
-    float scale;
     float ascent;
     float descent;
     float line_gap;
@@ -44,12 +43,12 @@ static inline int getCacheIndex(int codepoint) {
 }
 
 static inline void cacheMetricsForSize(float font_size) {
-    cached_metrics.scale = stbtt_ScaleForPixelHeight(&font, font_size);
+    float scale = stbtt_ScaleForPixelHeight(&font, font_size);
     int a, d, lg;
     stbtt_GetFontVMetrics(&font, &a, &d, &lg);
-    cached_metrics.ascent = a * cached_metrics.scale;
-    cached_metrics.descent = d * cached_metrics.scale;
-    cached_metrics.line_gap = lg * cached_metrics.scale;
+    cached_metrics.ascent = a * scale;
+    cached_metrics.descent = d * scale;
+    cached_metrics.line_gap = lg * scale;
 }
 
 static SDL_Texture *bitmapToTexture(SDL_Renderer *renderer,
@@ -159,6 +158,7 @@ bool textRenderInit(SDL_Renderer *renderer, const char *font_path,
     // Pre-rasterize glyph cache
     SDL_Color white = {255, 255, 255, 255};
     int cached_count = 0;
+    float scale = stbtt_ScaleForPixelHeight(&font, font_size);
 
     for (int codepoint = CACHE_START_CHAR; codepoint <= CACHE_END_CHAR;
          codepoint++) {
@@ -167,9 +167,8 @@ bool textRenderInit(SDL_Renderer *renderer, const char *font_path,
             continue;
 
         int width, height, xoff, yoff;
-        unsigned char *bitmap =
-            stbtt_GetCodepointBitmap(&font, 0, cached_metrics.scale, codepoint,
-                                     &width, &height, &xoff, &yoff);
+        unsigned char *bitmap = stbtt_GetCodepointBitmap(
+            &font, 0, scale, codepoint, &width, &height, &xoff, &yoff);
 
         if (bitmap) {
             SDL_Texture *tex =
@@ -226,22 +225,16 @@ void textRenderQuit(void) {
 
 void textRenderDraw(SDL_Renderer *renderer, const char *text, float x, float y,
                     float font_size, SDL_Color color) {
-    // Use cached metrics if using the cached font size
-    float scale, ascent;
-    if (font_size == cached_font_size) {
-        scale = cached_metrics.scale;
-        ascent = cached_metrics.ascent;
-    } else {
-        scale = stbtt_ScaleForPixelHeight(&font, font_size);
-        int a, d, lg;
-        stbtt_GetFontVMetrics(&font, &a, &d, &lg);
-        ascent = a * scale;
-    }
 
+    int a, d, lg;
+    stbtt_GetFontVMetrics(&font, &a, &d, &lg);
+
+    float scale = stbtt_ScaleForPixelHeight(&font, font_size);
+    float ascent = a * scale;
     float size = font_size / cached_font_size;
     float baseline = y + ascent;
-
     float x_pos = x;
+
     for (const char *p = text; *p; p++) {
         int codepoint = (int)(*p);
         int cache_idx = getCacheIndex(codepoint);
@@ -261,7 +254,6 @@ void textRenderDraw(SDL_Renderer *renderer, const char *text, float x, float y,
                 debugUIIncrementDrawCalls();
             }
 
-            // Always advance, even for spaces
             x_pos += entry->advance * scale;
 
             // Apply kerning if next character exists
@@ -278,13 +270,7 @@ void textRenderDraw(SDL_Renderer *renderer, const char *text, float x, float y,
 
 void textRenderMeasure(const char *text, float font_size, float *width,
                        float *height) {
-    // Use cached metrics if using the cached font size
-    float scale;
-    if (font_size == cached_font_size) {
-        scale = cached_metrics.scale;
-    } else {
-        scale = stbtt_ScaleForPixelHeight(&font, font_size);
-    }
+    float scale = stbtt_ScaleForPixelHeight(&font, font_size);
 
     if (width) {
         float total_width = 0;
@@ -321,6 +307,42 @@ void textRenderMeasure(const char *text, float font_size, float *width,
             *height = (ascent - descent) * scale;
         }
     }
+}
+
+float textRenderMeasureVisibleWidth(const char *text, float font_size) {
+    if (!text || !text[0]) {
+        return 0.0f;
+    }
+
+    // Use cached metrics if using the cached font size
+    float scale = stbtt_ScaleForPixelHeight(&font, font_size);
+
+    float total_width = 0;
+    const char *p = text;
+
+    for (; *p; p++) {
+        int codepoint = (int)(*p);
+        int cache_idx = getCacheIndex(codepoint);
+
+        // Use cached advance if available
+        if (cache_idx >= 0) {
+            total_width += glyph_cache[cache_idx].advance * scale;
+        } else {
+            int advance, lsb;
+            stbtt_GetCodepointHMetrics(&font, codepoint, &advance, &lsb);
+            total_width += advance * scale;
+        }
+
+        if (*(p + 1)) {
+            int kern = stbtt_GetCodepointKernAdvance(&font, codepoint,
+                                                     (int)(*(p + 1)));
+            if (kern != 0) { // Only apply if non-zero
+                total_width += kern * scale;
+            }
+        }
+    }
+
+    return total_width;
 }
 
 void textRenderGetMetrics(float font_size, float *ascent, float *descent,

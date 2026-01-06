@@ -76,18 +76,16 @@ void debugUIDraw(SDL_Renderer *renderer, int window_width, int window_height) {
 
     // Draw semi-transparent background
     SDL_FRect bg = {x, y, panel_width, panel_height};
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 200);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderFillRect(renderer, &bg);
 
     // Draw border
-    SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);
+    SDL_SetRenderDrawColor(renderer, 80, 80, 80, 255);
     SDL_RenderRect(renderer, &bg);
 
     float text_y = y + padding;
     SDL_Color white = {255, 255, 255, 255};
     SDL_Color green = {0, 255, 0, 255};
-    SDL_Color yellow = {255, 255, 0, 255};
-    SDL_Color red = {255, 0, 0, 255};
 
     // Calculate statistics
     double avg_frame_time = 0;
@@ -111,31 +109,24 @@ void debugUIDraw(SDL_Renderer *renderer, int window_width, int window_height) {
     // Draw FPS
     char text_buffer[128];
     snprintf(text_buffer, sizeof(text_buffer), "FPS: %.1f", debug.fps);
-    SDL_Color fps_color =
-        debug.fps >= 60 ? green : (debug.fps >= 30 ? yellow : red);
-    textRenderDraw(renderer, text_buffer, x + padding, text_y, 24.0f,
-                   fps_color);
-    debugUIIncrementDrawCalls();
+    textRenderDraw(renderer, text_buffer, x + padding, text_y, 24.0f, green);
     text_y += 24.0f;
 
     // Draw frame time stats
     snprintf(text_buffer, sizeof(text_buffer), "Frame: %.2fms (avg)",
              avg_frame_time);
     textRenderDraw(renderer, text_buffer, x + padding, text_y, 24.0f, white);
-    debugUIIncrementDrawCalls();
     text_y += 24.0f;
 
     snprintf(text_buffer, sizeof(text_buffer), "Min: %.2fms | Max: %.2fms",
              min_frame_time, max_frame_time);
     textRenderDraw(renderer, text_buffer, x + padding, text_y, 24.0f, white);
-    debugUIIncrementDrawCalls();
     text_y += 24.0f;
 
     // Draw draw calls
     snprintf(text_buffer, sizeof(text_buffer), "Draw Calls: %d (avg: %d)",
              debug.draw_calls, avg_draw_calls);
     textRenderDraw(renderer, text_buffer, x + padding, text_y, 24.0f, white);
-    debugUIIncrementDrawCalls();
     text_y += 24.0f;
 
     // Draw frame time graph
@@ -147,18 +138,6 @@ void debugUIDraw(SDL_Renderer *renderer, int window_width, int window_height) {
     SDL_SetRenderDrawColor(renderer, 20, 20, 20, 255);
     SDL_RenderFillRect(renderer, &graph_bg);
 
-    // Draw 60 FPS reference line (16.67ms)
-    float ref_60fps = graph_y + GRAPH_HEIGHT - (16.67 / 33.33) * GRAPH_HEIGHT;
-    SDL_SetRenderDrawColor(renderer, 0, 100, 0, 128);
-    SDL_RenderLine(renderer, graph_x, ref_60fps, graph_x + GRAPH_WIDTH,
-                   ref_60fps);
-
-    // Draw 30 FPS reference line (33.33ms)
-    float ref_30fps = graph_y + GRAPH_HEIGHT - (33.33 / 33.33) * GRAPH_HEIGHT;
-    SDL_SetRenderDrawColor(renderer, 100, 100, 0, 128);
-    SDL_RenderLine(renderer, graph_x, ref_30fps, graph_x + GRAPH_WIDTH,
-                   ref_30fps);
-
     // Draw frame time graph
     float bar_width = GRAPH_WIDTH / (float)FRAME_HISTORY_SIZE;
     for (int i = 0; i < FRAME_HISTORY_SIZE; i++) {
@@ -166,8 +145,7 @@ void debugUIDraw(SDL_Renderer *renderer, int window_width, int window_height) {
         double frame_time = debug.frame_times[idx];
 
         if (frame_time > 0) {
-            // Cap at 33.33ms for display
-            float normalized = (float)(frame_time / 33.33);
+            float normalized = (float)(frame_time / 1);
             if (normalized > 1.0f)
                 normalized = 1.0f;
 
@@ -175,17 +153,7 @@ void debugUIDraw(SDL_Renderer *renderer, int window_width, int window_height) {
             float bar_x = graph_x + i * bar_width;
             float bar_y = graph_y + GRAPH_HEIGHT - bar_height;
 
-            // Color code based on frame time
-            if (frame_time <= 16.67) {
-                SDL_SetRenderDrawColor(renderer, 0, 255, 0,
-                                       255); // Green (60+ FPS)
-            } else if (frame_time <= 33.33) {
-                SDL_SetRenderDrawColor(renderer, 255, 255, 0,
-                                       255); // Yellow (30-60 FPS)
-            } else {
-                SDL_SetRenderDrawColor(renderer, 255, 0, 0,
-                                       255); // Red (<30 FPS)
-            }
+            SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
 
             SDL_FRect bar = {bar_x, bar_y, bar_width, bar_height};
             SDL_RenderFillRect(renderer, &bar);
@@ -195,11 +163,6 @@ void debugUIDraw(SDL_Renderer *renderer, int window_width, int window_height) {
     // Graph border
     SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);
     SDL_RenderRect(renderer, &graph_bg);
-
-    // Draw graph labels
-    textRenderDraw(renderer, "Frame Time (ms)", graph_x,
-                   graph_y + GRAPH_HEIGHT + 2, 10.0f, white);
-    debugUIIncrementDrawCalls();
 }
 
 void debugUIQuit(void) { memset(&debug, 0, sizeof(DebugUI)); }

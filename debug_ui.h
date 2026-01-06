@@ -15,12 +15,6 @@ void debugUIIncrementDrawCalls(void);
 // Reset draw call counter (call at start of frame)
 void debugUIResetDrawCalls(void);
 
-// Toggle debug UI visibility
-void debugUIToggle(void);
-
-// Check if debug UI is visible
-bool debugUIIsVisible(void);
-
 // Draw the debug UI overlay
 void debugUIDraw(SDL_Renderer *renderer, int window_width, int window_height);
 

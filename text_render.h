@@ -18,9 +18,12 @@ void textRenderQuit(void);
 void textRenderDraw(SDL_Renderer *renderer, const char *text, float x, float y,
                     float font_size, SDL_Color color);
 
-// Measure text dimensions without rendering
+// Measure text dimensions without rendering (uses advance widths)
 void textRenderMeasure(const char *text, float font_size, float *width,
                        float *height);
+
+// Measure visible width of text (excludes trailing space advance)
+float textRenderMeasureVisibleWidth(const char *text, float font_size);
 
 // Get font metrics for layout calculations
 void textRenderGetMetrics(float font_size, float *ascent, float *descent,

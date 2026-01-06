@@ -6,25 +6,26 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
-const char gameName[] = "Type King";
+const char game_name[] = "Type King";
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
 static int width = 1024;
 static int height = 720;
 static int font_size = 24.0f;
+static bool debug_info = false;
 
 SDL_AppResult SDL_AppInit(__attribute__((unused)) void **appstate,
                           __attribute__((unused)) int argc,
                           __attribute__((unused)) char *argv[]) {
 
-    SDL_SetAppMetadata(gameName, "1.0", "com.palm.treetyper");
+    SDL_SetAppMetadata(game_name, "1.0", "com.palm.treetyper");
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_Log("Could not initialize SDL: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
 
-    if (!SDL_CreateWindowAndRenderer(gameName, width, height,
+    if (!SDL_CreateWindowAndRenderer(game_name, width, height,
                                      SDL_WINDOW_RESIZABLE, &window,
                                      &renderer)) {
 
@@ -56,8 +57,8 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
     }
     if (event->type == SDL_EVENT_KEY_DOWN) {
         if (event->key.key == SDLK_F3) {
-            debugUIToggle();
-            SDL_Log("Debug UI %s", debugUIIsVisible() ? "enabled" : "disabled");
+            debug_info = !debug_info;
+            SDL_Log("Debug UI %s", debug_info ? "enabled" : "disabled");
         }
     }
 
@@ -77,42 +78,46 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     // Text box with START alignment (default)
     UITextBox box1 = uiTextBoxCreate(window_padding, 50.0f,
                                      width - window_padding * 2, 150.0f);
-    box1.text = "Start Alignment (Default)\n\nThis text is aligned to the "
-                "start (left). Long lines wrap naturally at word boundaries.";
+    box1.text = "This text is aligned to the start (left). Long lines wrap "
+                "naturally at word boundaries. Pretty cool, huh?";
     box1.font_size = 24.0f;
     box1.align = UI_ALIGN_START;
     uiTextBoxDraw(renderer, &box1);
 
-    // Text box with CENTER alignment
-    UITextBox box2 = uiTextBoxCreate(window_padding, 220.0f,
-                                     width - window_padding * 2, 150.0f);
-    box2.text = "Center Alignment\n\nThis text is centered within the box. "
-                "Each line is individually centered based on its width.";
-    box2.font_size = 24.0f;
-    box2.align = UI_ALIGN_CENTER;
-    box2.bg_color = (SDL_Color){20, 40, 60, 255};
-    box2.border_color = (SDL_Color){80, 120, 160, 255};
-    uiTextBoxDraw(renderer, &box2);
+    // // Text box with CENTER alignment
+    // UITextBox box2 = uiTextBoxCreate(window_padding, 220.0f,
+    //                                  width - window_padding * 2, 150.0f);
+    // box2.text = "This text is centered within the box. "
+    //             "Each line is individually centered based on its width.";
+    // box2.font_size = 24.0f;
+    // box2.align = UI_ALIGN_CENTER;
+    // box2.bg_color = (SDL_Color){20, 40, 60, 255};
+    // box2.border_color = (SDL_Color){80, 120, 160, 255};
+    // uiTextBoxDraw(renderer, &box2);
 
-    // Text box with END alignment
-    UITextBox box3 = uiTextBoxCreate(window_padding, 390.0f,
-                                     width - window_padding * 2, 150.0f);
-    box3.text = "End Alignment\n\nThis text is aligned to the end (right). "
-                "Perfect for right-to-left text or special layouts!";
-    box3.font_size = 24.0f;
-    box3.align = UI_ALIGN_END;
-    box3.bg_color = (SDL_Color){40, 20, 60, 255};
-    box3.border_color = (SDL_Color){120, 80, 160, 255};
-    uiTextBoxDraw(renderer, &box3);
+    // // Text box with END alignment
+    // UITextBox box3 = uiTextBoxCreate(window_padding, 390.0f,
+    //                                  width - window_padding * 2, 150.0f);
+    // box3.text = "This text is aligned to the end (right). "
+    //             "Perfect for right-to-left text or special layouts!";
+    // box3.font_size = 24.0f;
+    // box3.align = UI_ALIGN_END;
+    // box3.bg_color = (SDL_Color){40, 20, 60, 255};
+    // box3.border_color = (SDL_Color){120, 80, 160, 255};
+    // uiTextBoxDraw(renderer, &box3);
 
     // Draw debug UI (if enabled)
-    debugUIDraw(renderer, width, height);
+    if (debug_info) {
+        debugUIDraw(renderer, width, height);
+    }
 
     SDL_RenderPresent(renderer);
     /* ===================== */
 
     // Update frame timing at the end of frame
-    debugUIUpdateFrame();
+    if (debug_info) {
+        debugUIUpdateFrame();
+    }
 
     return SDL_APP_CONTINUE;
 }

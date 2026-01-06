@@ -4,9 +4,9 @@
 #include <stdbool.h>
 
 typedef enum {
-    UI_ALIGN_START,   // Left alignment
-    UI_ALIGN_CENTER,  // Center alignment
-    UI_ALIGN_END      // Right alignment
+    UI_ALIGN_START,  // Left alignment
+    UI_ALIGN_CENTER, // Center alignment
+    UI_ALIGN_END     // Right alignment
 } UITextAlign;
 
 typedef struct {
@@ -36,6 +36,3 @@ UITextBox uiTextBoxCreate(float x, float y, float width, float height);
 
 // Draw a text box with background, border, padding, and multi-line text
 void uiTextBoxDraw(SDL_Renderer *renderer, const UITextBox *box);
-
-// Measure the required height for a text box given its width and text content
-float uiTextBoxMeasureHeight(const UITextBox *box);
