@@ -24,8 +24,6 @@ typedef struct {
     UIPadding padding;
     SDL_Color bg_color;
     SDL_Color text_color;
-    SDL_Color border_color;
-    float border_width;
     const char *text;
     float font_size;
     UITextAlign align;

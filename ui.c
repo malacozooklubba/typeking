@@ -4,6 +4,13 @@
 #include <SDL3/SDL.h>
 #include <string.h>
 
+// Remove these once we have a proper color scheme for the UI
+// Then we can use the colors from the theme instead of these hardcoded ones
+// here and in main.
+const SDL_Color ui_untyped_text_color = {0x57, 0x65, 0x81, 0xFF};
+const SDL_Color ui_typed_text_color = {0xE9, 0xD7, 0xB1, 0xFF};
+const SDL_Color ui_error_text_color = {0xD4, 0x31, 0x31, 0xFF};
+
 UITextBox uiTextBoxCreate(float x, float y, float width, float height) {
     UITextBox box = {.x = x,
                      .y = y,
@@ -13,10 +20,8 @@ UITextBox uiTextBoxCreate(float x, float y, float width, float height) {
                                  .right = 10.0f,
                                  .bottom = 10.0f,
                                  .left = 10.0f},
-                     .bg_color = {30, 30, 30, 255},
+                     .bg_color = {255, 0, 255, 255},
                      .text_color = {255, 255, 255, 255},
-                     .border_color = {100, 100, 100, 255},
-                     .border_width = 2.0f,
                      .text = "",
                      .font_size = 16.0f,
                      .align = UI_ALIGN_START};
@@ -62,8 +67,11 @@ static inline void renderAlignedLine(SDL_Renderer *renderer,
     float text_y =
         calculateAlignedY(base_y, max_height, line_height, box->align);
 
-    textRenderDraw(renderer, line_buffer, text_x, text_y, box->font_size,
-                   box->text_color);
+    // textRenderDraw(renderer, line_buffer, text_x, text_y, box->font_size,
+    //                box->text_color);
+
+    typedTextRenderDraw(renderer, line_buffer, text_x, text_y, box->font_size,
+                        0);
 }
 
 void uiTextBoxDraw(SDL_Renderer *renderer, const UITextBox *box) {
@@ -71,25 +79,9 @@ void uiTextBoxDraw(SDL_Renderer *renderer, const UITextBox *box) {
         return;
     }
 
-    if (box->border_width > 0) {
-        SDL_SetRenderDrawColor(renderer, box->border_color.r,
-                               box->border_color.g, box->border_color.b,
-                               box->border_color.a);
-
-        // Top border
-        SDL_FRect border_rect = {box->x, box->y, box->width, box->height};
-        SDL_RenderFillRect(renderer, &border_rect);
-        debugUIIncrementDrawCalls();
-    }
-
     // Draw background
-    SDL_FRect bg_rect = {.x = box->x + box->border_width,
-                         .y = box->y + box->border_width,
-                         .w = box->width - box->border_width * 2,
-                         .h = box->height - box->border_width * 2};
-
-    SDL_SetRenderDrawColor(renderer, box->bg_color.r, box->bg_color.g,
-                           box->bg_color.b, box->bg_color.a);
+    SDL_FRect bg_rect = {
+        .x = box->x, .y = box->y, .w = box->width, .h = box->height};
 
     SDL_RenderFillRect(renderer, &bg_rect);
     debugUIIncrementDrawCalls();

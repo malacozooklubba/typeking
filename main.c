@@ -3,6 +3,7 @@
 #include "ui.h"
 #include <SDL3/SDL_keycode.h>
 #include <SDL3/SDL_oldnames.h>
+#include <SDL3/SDL_pixels.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -22,6 +23,10 @@ typedef enum {
 } GameState;
 
 const char game_name[] = "Type King";
+const SDL_Color background_color = {0x1D, 0x23, 0x2F, 0xFF};
+const SDL_Color untyped_text_color = {0x57, 0x65, 0x81, 0xFF};
+const SDL_Color typed_text_color = {0xE9, 0xD7, 0xB1, 0xFF};
+const SDL_Color error_text_color = {0xD4, 0x31, 0x31, 0xFF};
 
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
@@ -32,6 +37,7 @@ static GameState game_state = LOBBY;
 
 // Typing game state variables
 static char input_buffer[MAX_WORD_LENGTH * MAX_WORD_COUNT];
+// static char input_buffer[1024];
 static int input_buffer_pos = 0;
 
 void enterLobbyMode(void) {
@@ -52,18 +58,19 @@ void enterResultsMode() {
     SDL_StopTextInput(window);
 }
 
-void lobbyGameState() {
+void renderLobbyGameState() {
     UITextBox hello_message =
         uiTextBoxCreate(0.0f, 0.0f, window_width, window_height);
 
     hello_message.text = "PRESS ENTER TO START";
     hello_message.font_size = 32.0f;
     hello_message.align = UI_ALIGN_CENTER;
+    hello_message.text_color = typed_text_color;
 
     uiTextBoxDraw(renderer, &hello_message);
 }
 
-void typingGameState() {
+void renderTypingGameState() {
     const float window_padding = 50.0f;
 
     UITextBox box1 = uiTextBoxCreate(window_padding, 50.0f,
@@ -72,6 +79,8 @@ void typingGameState() {
     box1.text = input_buffer;
     box1.font_size = 32.0f;
     box1.align = UI_ALIGN_START;
+    box1.text_color = untyped_text_color;
+    box1.bg_color = background_color;
 
     uiTextBoxDraw(renderer, &box1);
 }
@@ -228,16 +237,17 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     debugUIResetDrawCalls();
 
     /* ==== Render Loop ==== */
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_SetRenderDrawColor(renderer, background_color.r, background_color.g,
+                           background_color.b, background_color.a);
     SDL_RenderClear(renderer);
 
     // Run game state machine
     switch (game_state) {
     case LOBBY:
-        lobbyGameState();
+        renderLobbyGameState();
         break;
     case TYPING:
-        typingGameState();
+        renderTypingGameState();
         break;
     case RESULTS:
         break;

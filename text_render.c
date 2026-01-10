@@ -27,6 +27,10 @@ typedef struct {
     float line_gap;
 } FontMetricsCache;
 
+const SDL_Color tr_untyped_text_color = {0x57, 0x65, 0x81, 0xFF};
+const SDL_Color tr_typed_text_color = {0xE9, 0xD7, 0xB1, 0xFF};
+const SDL_Color tr_error_text_color = {0xD4, 0x31, 0x31, 0xFF};
+
 static unsigned char *ttf_buffer = NULL;
 static stbtt_fontinfo font;
 static float cached_font_size = 0.0f;
@@ -238,18 +242,80 @@ void textRenderDraw(SDL_Renderer *renderer, const char *text, float x, float y,
     for (const char *p = text; *p; p++) {
         int codepoint = (int)(*p);
         int cache_idx = getCacheIndex(codepoint);
+        SDL_Color glyph_color = color;
 
         if (cache_idx >= 0) {
             GlyphCacheEntry *entry = &glyph_cache[cache_idx];
 
             // Render the glyph if it has a texture (spaces don't)
             if (entry->texture != NULL) {
-                SDL_SetTextureColorMod(entry->texture, color.r, color.g,
-                                       color.b);
+                SDL_SetTextureColorMod(entry->texture, glyph_color.r,
+                                       glyph_color.g, glyph_color.b);
 
                 SDL_FRect dst = {
                     x_pos + entry->xoff * size, baseline + entry->yoff * size,
                     (float)entry->width * size, (float)entry->height * size};
+
+                SDL_RenderTexture(renderer, entry->texture, NULL, &dst);
+                debugUIIncrementDrawCalls();
+            }
+
+            x_pos += entry->advance * scale;
+
+            // Apply kerning if next character exists
+            if (*(p + 1)) {
+                int kern = stbtt_GetCodepointKernAdvance(&font, codepoint,
+                                                         (int)(*(p + 1)));
+                if (kern != 0) { // Only apply if non-zero
+                    x_pos += kern * scale;
+                }
+            }
+        }
+    }
+}
+
+void typedTextRenderDraw(SDL_Renderer *renderer, const char *text, float x,
+                         float y, float font_size, int char_states) {
+
+    int a, d, lg;
+    stbtt_GetFontVMetrics(&font, &a, &d, &lg);
+
+    float scale = stbtt_ScaleForPixelHeight(&font, font_size);
+    float ascent = a * scale;
+    float size = font_size / cached_font_size;
+    float baseline = y + ascent;
+    float x_pos = x;
+
+    for (const char *p = text; *p; p++) {
+        int codepoint = (int)(*p);
+        int cache_idx = getCacheIndex(codepoint);
+        // int color_value = char_states[codepoint];
+        SDL_Color glyph_color = {0x00, 0x00, 0x00, 0x00};
+
+        switch (char_states) {
+        case 1:
+            glyph_color = tr_typed_text_color;
+            break;
+        case 2:
+            glyph_color = tr_error_text_color;
+            break;
+        default:
+            glyph_color = tr_untyped_text_color;
+            break;
+        }
+
+        if (cache_idx >= 0) {
+            GlyphCacheEntry *entry = &glyph_cache[cache_idx];
+
+            // Render the glyph if it has a texture (spaces don't)
+            if (entry->texture != NULL) {
+                SDL_SetTextureColorMod(entry->texture, glyph_color.r,
+                                       glyph_color.g, glyph_color.b);
+
+                SDL_FRect dst = {
+                    x_pos + entry->xoff * size, baseline + entry->yoff * size,
+                    (float)entry->width * size, (float)entry->height * size};
+
                 SDL_RenderTexture(renderer, entry->texture, NULL, &dst);
                 debugUIIncrementDrawCalls();
             }
