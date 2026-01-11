@@ -13,7 +13,7 @@
 #include <SDL3/SDL_main.h>
 
 #define FONT_SIZE 32.0f
-#define MAX_WORD_COUNT 30
+#define MAX_WORD_COUNT 5
 #define MAX_WORD_LENGTH 32
 
 typedef enum {
@@ -126,11 +126,22 @@ void renderTypingGameState() {
     box1.align = UI_ALIGN_START;
     box1.text_color = untyped_text_color;
     box1.bg_color = background_color;
+    box1.caret_position = user_input_pos;
 
     uiTextBoxDraw(renderer, &box1);
 }
 
-void resultsGameState() {}
+void renderResultsGameState() {
+    UITextBox results_message =
+        uiTextBoxCreate(0.0f, 0.0f, window_width, window_height);
+
+    results_message.text = "COMPLETED! PRESS ANY KEY TO CONTINUE";
+    results_message.font_size = 32.0f;
+    results_message.align = UI_ALIGN_CENTER;
+    results_message.text_color = typed_text_color;
+
+    uiTextBoxDraw(renderer, &results_message);
+}
 
 void addWord(char *word) {}
 
@@ -267,12 +278,20 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
             // Add text in event to input buffer
             if (user_input_pos < 1024) {
                 user_input[user_input_pos++] = event->text.text[0];
-                // SDL_Log("Input buffer: %s", user_input);
+                user_input[user_input_pos] = '\0';
+
+                // Check if user has typed all the text
+                if (user_input_pos >= strlen(target_text)) {
+                    enterResultsMode();
+                }
             }
         }
         break;
     case RESULTS:
-        game_state = LOBBY;
+        if (event->type == SDL_EVENT_KEY_DOWN) {
+            loadWords(); // Load new words for next round
+            enterLobbyMode();
+        }
         break;
     }
 
@@ -297,6 +316,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         renderTypingGameState();
         break;
     case RESULTS:
+        renderResultsGameState();
         break;
     }
 

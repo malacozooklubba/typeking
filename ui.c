@@ -25,7 +25,8 @@ UITextBox uiTextBoxCreate(float x, float y, float width, float height) {
                      .text = "",
                      .char_states = NULL,
                      .font_size = 16.0f,
-                     .align = UI_ALIGN_START};
+                     .align = UI_ALIGN_START,
+                     .caret_position = -1};
     return box;
 }
 
@@ -61,7 +62,7 @@ static inline void renderAlignedLine(SDL_Renderer *renderer,
                                      float base_y, float max_width,
                                      float max_height, const UITextBox *box,
                                      const unsigned char *char_states,
-                                     int char_offset) {
+                                     int char_offset, int line_length) {
     float line_width =
         textRenderMeasureVisibleWidth(line_buffer, box->font_size);
     float text_x = calculateAlignedX(base_x, max_width, line_width, box->align);
@@ -76,6 +77,36 @@ static inline void renderAlignedLine(SDL_Renderer *renderer,
     } else {
         textRenderDraw(renderer, line_buffer, text_x, text_y, box->font_size,
                        box->text_color);
+    }
+
+    // Draw caret if it's on this line
+    if (box->caret_position >= char_offset &&
+        box->caret_position <= char_offset + line_length) {
+        int caret_offset_in_line = box->caret_position - char_offset;
+
+        // Measure text up to caret position
+        char temp_buffer[1024];
+        strncpy(temp_buffer, line_buffer, caret_offset_in_line);
+        temp_buffer[caret_offset_in_line] = '\0';
+
+        float caret_x_offset = 0.0f;
+        if (caret_offset_in_line > 0) {
+            textRenderMeasure(temp_buffer, box->font_size, &caret_x_offset, NULL);
+        }
+
+        float caret_x = text_x + caret_x_offset;
+        float ascent, descent;
+        textRenderGetMetrics(box->font_size, &ascent, &descent, NULL);
+        float caret_y = text_y;
+        float caret_height = ascent - descent;
+
+        // Draw caret as a vertical line
+        SDL_Color caret_color = ui_typed_text_color;
+        SDL_SetRenderDrawColor(renderer, caret_color.r, caret_color.g,
+                               caret_color.b, caret_color.a);
+        SDL_FRect caret_rect = {caret_x, caret_y, 2.0f, caret_height};
+        SDL_RenderFillRect(renderer, &caret_rect);
+        debugUIIncrementDrawCalls();
     }
 }
 
@@ -138,7 +169,8 @@ void uiTextBoxDraw(SDL_Renderer *renderer, const UITextBox *box) {
                             line_buffer[line_pos] = '\0';
                             renderAlignedLine(renderer, line_buffer, base_x,
                                               text_y, max_width, max_height,
-                                              box, box->char_states, char_offset);
+                                              box, box->char_states, char_offset,
+                                              line_pos);
 
                             text_y += line_height;
                             char_offset += line_pos; // Update offset for next line
@@ -168,7 +200,8 @@ void uiTextBoxDraw(SDL_Renderer *renderer, const UITextBox *box) {
         if (line_pos > 0) {
             line_buffer[line_pos] = '\0';
             renderAlignedLine(renderer, line_buffer, base_x, text_y, max_width,
-                              max_height, box, box->char_states, char_offset);
+                              max_height, box, box->char_states, char_offset,
+                              line_pos);
         }
     }
 }
