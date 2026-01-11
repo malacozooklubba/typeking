@@ -28,7 +28,8 @@ typedef struct {
     const unsigned char *char_states;
     float font_size;
     UITextAlign align;
-    int caret_position; // Character position for caret (-1 to disable)
+    int caret_position;          // Character position for caret (-1 to disable)
+    float caret_visual_x_offset; // Visual X offset for lerp (relative to text start)
 } UITextBox;
 
 // Initialize a text box with default values

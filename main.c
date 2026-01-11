@@ -4,6 +4,7 @@
 #include <SDL3/SDL_keycode.h>
 #include <SDL3/SDL_oldnames.h>
 #include <SDL3/SDL_pixels.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -26,6 +27,19 @@ typedef enum {
     TYPING,
     RESULTS,
 } GameState;
+
+typedef enum {
+    TRANSITION_NONE,     // No transition active
+    TRANSITION_FADE_IN,  // Fading to black (hiding old state)
+    TRANSITION_FADE_OUT  // Fading from black (revealing new state)
+} TransitionState;
+
+typedef struct {
+    TransitionState state;
+    Uint64 start_time;
+    float duration_ms;
+    GameState target_state;
+} StateTransition;
 
 typedef enum {
     CHAR_STATE_UNTYPED = 0,
@@ -71,57 +85,175 @@ static TypingStats typing_stats = {0};
 static int word_count = MODE_SHORT;
 static bool position_had_error[MAX_WORD_LENGTH * MAX_WORD_COUNT] = {false};
 
+// Animation timing
+static Uint64 last_frame_time = 0;
+
+// State transition animation
+static StateTransition state_transition = {
+    .state = TRANSITION_NONE,
+    .duration_ms = 100.0f  // Each phase is 100ms (200ms total)
+};
+
+// Caret lerp animation
+static float caret_visual_x = 0.0f;
+static float caret_target_x = 0.0f;
+
 // Forward declarations
 static void calculateTypingStats(void);
 static void loadWords(int count);
 
+static void beginTransition(GameState target) {
+    state_transition.state = TRANSITION_FADE_IN;
+    state_transition.start_time = SDL_GetPerformanceCounter();
+    state_transition.target_state = target;
+}
+
+static void performStateChange(GameState new_state) {
+    GameState old_state = game_state;
+    game_state = new_state;
+
+    SDL_Log("State change: %d -> %d", old_state, new_state);
+
+    switch (new_state) {
+        case LOBBY:
+            SDL_StopTextInput(window);
+            break;
+
+        case TYPING:
+            // Load new words for this round
+            loadWords(word_count);
+
+            user_input[0] = '\0';
+            user_input_pos = 0;
+
+            // Reset typing stats
+            memset(&typing_stats, 0, sizeof(TypingStats));
+            typing_stats.performance_frequency = SDL_GetPerformanceFrequency();
+            typing_stats.timer_started = false;
+
+            // Reset position error tracking
+            memset(position_had_error, false, sizeof(position_had_error));
+
+            // Count words and characters in target_text
+            typing_stats.total_words = 0;
+            typing_stats.total_chars = 0;
+            for (const char *p = target_text; *p; p++) {
+                if (*p == ' ')
+                    typing_stats.total_words++;
+                typing_stats.total_chars++;
+            }
+            if (typing_stats.total_chars > 0)
+                typing_stats.total_words++;
+
+            // Reset caret animation
+            caret_visual_x = 0.0f;
+            caret_target_x = 0.0f;
+
+            SDL_StartTextInput(window);
+            break;
+
+        case RESULTS:
+            // Capture end time and calculate all statistics
+            typing_stats.end_time = SDL_GetPerformanceCounter();
+            calculateTypingStats();
+            SDL_StopTextInput(window);
+            break;
+    }
+}
+
+static void updateTransitionState(Uint64 current_time) {
+    if (state_transition.state == TRANSITION_NONE) return;
+
+    float elapsed_ms = (current_time - state_transition.start_time) * 1000.0f /
+                       (float)SDL_GetPerformanceFrequency();
+
+    if (state_transition.state == TRANSITION_FADE_IN) {
+        if (elapsed_ms >= state_transition.duration_ms) {
+            // Midpoint: switch to actual state
+            performStateChange(state_transition.target_state);
+
+            // Start fade-out
+            state_transition.state = TRANSITION_FADE_OUT;
+            state_transition.start_time = current_time;
+        }
+    } else if (state_transition.state == TRANSITION_FADE_OUT) {
+        if (elapsed_ms >= state_transition.duration_ms) {
+            // Transition complete
+            state_transition.state = TRANSITION_NONE;
+        }
+    }
+}
+
+static void renderTransitionOverlay(SDL_Renderer *renderer, Uint64 current_time) {
+    if (state_transition.state == TRANSITION_NONE) return;
+
+    float elapsed_ms = (current_time - state_transition.start_time) * 1000.0f /
+                       (float)SDL_GetPerformanceFrequency();
+
+    float alpha_ratio = elapsed_ms / state_transition.duration_ms;
+    if (alpha_ratio > 1.0f) alpha_ratio = 1.0f;
+
+    int alpha;
+    if (state_transition.state == TRANSITION_FADE_IN) {
+        // Fade to black: alpha increases
+        alpha = (int)(alpha_ratio * 255.0f);
+    } else {
+        // Fade from black: alpha decreases
+        alpha = (int)((1.0f - alpha_ratio) * 255.0f);
+    }
+
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, alpha);
+
+    SDL_FRect overlay = {0, 0, window_width, window_height};
+    SDL_RenderFillRect(renderer, &overlay);
+
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+}
+
+static void updateCaretLerp(float delta_time) {
+    if (game_state != TYPING) {
+        caret_visual_x = 0.0f;
+        caret_target_x = 0.0f;
+        return;
+    }
+
+    // Calculate target X position from current input
+    if (user_input_pos == 0) {
+        caret_target_x = 0.0f;
+        caret_visual_x = 0.0f;
+        return;
+    }
+
+    // Measure text width up to caret position
+    char temp_text[MAX_WORD_LENGTH * MAX_WORD_COUNT];
+    strncpy(temp_text, user_input, user_input_pos);
+    temp_text[user_input_pos] = '\0';
+
+    float measured_width;
+    textRenderMeasure(temp_text, FONT_SIZE, &measured_width, NULL);
+    caret_target_x = measured_width;
+
+    // Exponential lerp toward target
+    const float lerp_factor = 15.0f;
+    caret_visual_x += (caret_target_x - caret_visual_x) * lerp_factor * delta_time;
+
+    // Snap when very close (within 0.5 pixels)
+    if (fabsf(caret_target_x - caret_visual_x) < 0.5f) {
+        caret_visual_x = caret_target_x;
+    }
+}
+
 void enterLobbyMode(void) {
-    game_state = LOBBY;
-    SDL_Log("Entering lobby mode");
-    SDL_StopTextInput(window);
+    beginTransition(LOBBY);
 }
 
 void enterTypingMode() {
-    game_state = TYPING;
-    SDL_Log("Entering typing mode");
-
-    // Load new words for this round
-    loadWords(word_count);
-
-    user_input[0] = '\0';
-    user_input_pos = 0;
-
-    // Reset typing stats
-    memset(&typing_stats, 0, sizeof(TypingStats));
-    typing_stats.performance_frequency = SDL_GetPerformanceFrequency();
-    typing_stats.timer_started = false;
-
-    // Reset position error tracking
-    memset(position_had_error, false, sizeof(position_had_error));
-
-    // Count words and characters in target_text
-    typing_stats.total_words = 0;
-    typing_stats.total_chars = 0;
-    for (const char *p = target_text; *p; p++) {
-        if (*p == ' ')
-            typing_stats.total_words++;
-        typing_stats.total_chars++;
-    }
-    if (typing_stats.total_chars > 0)
-        typing_stats.total_words++;
-
-    SDL_StartTextInput(window);
+    beginTransition(TYPING);
 }
 
 void enterResultsMode() {
-    game_state = RESULTS;
-    SDL_Log("Entering results mode");
-
-    // Capture end time and calculate all statistics
-    typing_stats.end_time = SDL_GetPerformanceCounter();
-    calculateTypingStats();
-
-    SDL_StopTextInput(window);
+    beginTransition(RESULTS);
 }
 
 void renderLobbyGameState() {
@@ -311,6 +443,7 @@ void renderTypingGameState() {
     box1.text_color = untyped_text_color;
     box1.bg_color = background_color;
     box1.caret_position = user_input_pos;
+    box1.caret_visual_x_offset = caret_visual_x;
 
     uiTextBoxDraw(renderer, &box1);
 }
@@ -578,6 +711,22 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
 }
 
 SDL_AppResult SDL_AppIterate(void *appstate) {
+    // Calculate delta time for animations
+    Uint64 current_time = SDL_GetPerformanceCounter();
+    float delta_time = 0.0f;
+
+    if (last_frame_time != 0) {
+        Uint64 delta_ticks = current_time - last_frame_time;
+        delta_time = delta_ticks / (float)SDL_GetPerformanceFrequency();
+    }
+    last_frame_time = current_time;
+
+    // Update transition state
+    updateTransitionState(current_time);
+
+    // Update caret lerp animation
+    updateCaretLerp(delta_time);
+
     // Reset draw calls at the start of each frame
     debugUIResetDrawCalls();
 
@@ -598,6 +747,9 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         renderResultsGameState();
         break;
     }
+
+    // Render fade overlay on top
+    renderTransitionOverlay(renderer, current_time);
 
     // Draw debug UI (if enabled)
     if (debug_info) {
