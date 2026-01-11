@@ -25,6 +25,7 @@ typedef struct {
     SDL_Color bg_color;
     SDL_Color text_color;
     const char *text;
+    const unsigned char *char_states;
     float font_size;
     UITextAlign align;
 } UITextBox;

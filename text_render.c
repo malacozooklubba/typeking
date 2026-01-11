@@ -275,7 +275,7 @@ void textRenderDraw(SDL_Renderer *renderer, const char *text, float x, float y,
 }
 
 void typedTextRenderDraw(SDL_Renderer *renderer, const char *text, float x,
-                         float y, float font_size, int char_states) {
+                         float y, float font_size, const unsigned char *char_states) {
 
     int a, d, lg;
     stbtt_GetFontVMetrics(&font, &a, &d, &lg);
@@ -286,13 +286,13 @@ void typedTextRenderDraw(SDL_Renderer *renderer, const char *text, float x,
     float baseline = y + ascent;
     float x_pos = x;
 
+    int char_index = 0;
     for (const char *p = text; *p; p++) {
         int codepoint = (int)(*p);
         int cache_idx = getCacheIndex(codepoint);
-        // int color_value = char_states[codepoint];
         SDL_Color glyph_color = {0x00, 0x00, 0x00, 0x00};
 
-        switch (char_states) {
+        switch (char_states[char_index]) {
         case 1:
             glyph_color = tr_typed_text_color;
             break;
@@ -331,6 +331,8 @@ void typedTextRenderDraw(SDL_Renderer *renderer, const char *text, float x,
                 }
             }
         }
+
+        char_index++;
     }
 }
 

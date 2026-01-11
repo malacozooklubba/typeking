@@ -23,6 +23,7 @@ UITextBox uiTextBoxCreate(float x, float y, float width, float height) {
                      .bg_color = {255, 0, 255, 255},
                      .text_color = {255, 255, 255, 255},
                      .text = "",
+                     .char_states = NULL,
                      .font_size = 16.0f,
                      .align = UI_ALIGN_START};
     return box;
@@ -58,7 +59,9 @@ static inline float calculateAlignedY(float base_y, float max_height,
 static inline void renderAlignedLine(SDL_Renderer *renderer,
                                      const char *line_buffer, float base_x,
                                      float base_y, float max_width,
-                                     float max_height, const UITextBox *box) {
+                                     float max_height, const UITextBox *box,
+                                     const unsigned char *char_states,
+                                     int char_offset) {
     float line_width =
         textRenderMeasureVisibleWidth(line_buffer, box->font_size);
     float text_x = calculateAlignedX(base_x, max_width, line_width, box->align);
@@ -67,8 +70,13 @@ static inline void renderAlignedLine(SDL_Renderer *renderer,
     float text_y =
         calculateAlignedY(base_y, max_height, line_height, box->align);
 
-    typedTextRenderDraw(renderer, line_buffer, text_x, text_y, box->font_size,
-                        0);
+    if (char_states != NULL) {
+        typedTextRenderDraw(renderer, line_buffer, text_x, text_y, box->font_size,
+                            char_states + char_offset);
+    } else {
+        textRenderDraw(renderer, line_buffer, text_x, text_y, box->font_size,
+                       box->text_color);
+    }
 }
 
 void uiTextBoxDraw(SDL_Renderer *renderer, const UITextBox *box) {
@@ -98,6 +106,7 @@ void uiTextBoxDraw(SDL_Renderer *renderer, const UITextBox *box) {
         char line_buffer[1024];
         int line_pos = 0;
         float current_line_width = 0.0f;
+        int char_offset = 0; // Track position in original text
 
         const char *word_start = box->text;
         const char *p = box->text;
@@ -129,9 +138,10 @@ void uiTextBoxDraw(SDL_Renderer *renderer, const UITextBox *box) {
                             line_buffer[line_pos] = '\0';
                             renderAlignedLine(renderer, line_buffer, base_x,
                                               text_y, max_width, max_height,
-                                              box);
+                                              box, box->char_states, char_offset);
 
                             text_y += line_height;
+                            char_offset += line_pos; // Update offset for next line
                             line_pos = 0;
                             current_line_width = 0.0f;
                         }
@@ -158,7 +168,7 @@ void uiTextBoxDraw(SDL_Renderer *renderer, const UITextBox *box) {
         if (line_pos > 0) {
             line_buffer[line_pos] = '\0';
             renderAlignedLine(renderer, line_buffer, base_x, text_y, max_width,
-                              max_height, box);
+                              max_height, box, box->char_states, char_offset);
         }
     }
 }

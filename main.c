@@ -13,7 +13,7 @@
 #include <SDL3/SDL_main.h>
 
 #define FONT_SIZE 32.0f
-#define MAX_WORD_COUNT 5
+#define MAX_WORD_COUNT 30
 #define MAX_WORD_LENGTH 32
 
 typedef enum {
@@ -21,6 +21,12 @@ typedef enum {
     TYPING,
     RESULTS,
 } GameState;
+
+typedef enum {
+    CHAR_STATE_UNTYPED = 0,
+    CHAR_STATE_CORRECT = 1,
+    CHAR_STATE_ERROR = 2
+} CharState;
 
 const char game_name[] = "Type King";
 const SDL_Color background_color = {0x1D, 0x23, 0x2F, 0xFF};
@@ -36,9 +42,9 @@ static bool debug_info = false;
 static GameState game_state = LOBBY;
 
 // Typing game state variables
-static char input_buffer[MAX_WORD_LENGTH * MAX_WORD_COUNT];
-// static char input_buffer[1024];
-static int input_buffer_pos = 0;
+static char target_text[MAX_WORD_LENGTH * MAX_WORD_COUNT];
+static char user_input[MAX_WORD_LENGTH * MAX_WORD_COUNT];
+static int user_input_pos = 0;
 
 void enterLobbyMode(void) {
     game_state = LOBBY;
@@ -49,6 +55,8 @@ void enterLobbyMode(void) {
 void enterTypingMode() {
     game_state = TYPING;
     SDL_Log("Entering typing mode");
+    user_input[0] = '\0';
+    user_input_pos = 0;
     SDL_StartTextInput(window);
 }
 
@@ -70,13 +78,50 @@ void renderLobbyGameState() {
     uiTextBoxDraw(renderer, &hello_message);
 }
 
+static void compareInputToTarget(const char *target, const char *input,
+                                 unsigned char *states, int max_len) {
+    int input_len = strlen(input);
+    int target_len = strlen(target);
+
+    for (int i = 0; i < target_len && i < max_len; i++) {
+        if (i >= input_len) {
+            states[i] = CHAR_STATE_UNTYPED;
+        } else if (input[i] == target[i]) {
+            states[i] = CHAR_STATE_CORRECT;
+        } else {
+            states[i] = CHAR_STATE_ERROR;
+        }
+    }
+}
+
 void renderTypingGameState() {
     const float window_padding = 50.0f;
+
+    // Create state array and compare input to target
+    unsigned char char_states[MAX_WORD_LENGTH * MAX_WORD_COUNT];
+    compareInputToTarget(target_text, user_input, char_states,
+                         sizeof(char_states));
+
+    // Build display text: user input + remaining target text
+    static char display_text[MAX_WORD_LENGTH * MAX_WORD_COUNT];
+    int input_len = strlen(user_input);
+    int target_len = strlen(target_text);
+
+    // Copy user input
+    strncpy(display_text, user_input, input_len);
+
+    // Append remaining target text
+    if (input_len < target_len) {
+        strcpy(display_text + input_len, target_text + input_len);
+    } else {
+        display_text[input_len] = '\0';
+    }
 
     UITextBox box1 = uiTextBoxCreate(window_padding, 50.0f,
                                      window_width - window_padding * 2, 150.0f);
 
-    box1.text = input_buffer;
+    box1.text = display_text;
+    box1.char_states = char_states;
     box1.font_size = 32.0f;
     box1.align = UI_ALIGN_START;
     box1.text_color = untyped_text_color;
@@ -90,6 +135,8 @@ void resultsGameState() {}
 void addWord(char *word) {}
 
 void loadWords() {
+    target_text[0] = '\0'; // Initialize empty string
+
     FILE *file = fopen("words/oxford_3000.txt", "r");
 
     if (file == NULL) {
@@ -136,13 +183,13 @@ void loadWords() {
 
             // Append to output buffer
             if (i > 0) {
-                strcat(input_buffer, " "); // Add space separator
+                strcat(target_text, " "); // Add space separator
             }
-            strcat(input_buffer, buffer);
+            strcat(target_text, buffer);
         }
     }
 
-    printf("%s\n", input_buffer);
+    printf("%s\n", target_text);
 
     fclose(file);
 }
@@ -209,18 +256,18 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
         if (event->type == SDL_EVENT_KEY_DOWN) {
             if (event->key.key == SDLK_BACKSPACE) {
                 // Remove last character from input buffer
-                if (input_buffer_pos > 0) {
-                    input_buffer_pos--;
-                    input_buffer[input_buffer_pos] = '\0';
+                if (user_input_pos > 0) {
+                    user_input_pos--;
+                    user_input[user_input_pos] = '\0';
                 }
             }
         }
 
         if (event->type == SDL_EVENT_TEXT_INPUT) {
             // Add text in event to input buffer
-            if (input_buffer_pos < 1024) {
-                input_buffer[input_buffer_pos++] = event->text.text[0];
-                // SDL_Log("Input buffer: %s", input_buffer);
+            if (user_input_pos < 1024) {
+                user_input[user_input_pos++] = event->text.text[0];
+                // SDL_Log("Input buffer: %s", user_input);
             }
         }
         break;
