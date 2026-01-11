@@ -29,9 +29,9 @@ typedef enum {
 } GameState;
 
 typedef enum {
-    TRANSITION_NONE,     // No transition active
-    TRANSITION_FADE_IN,  // Fading to black (hiding old state)
-    TRANSITION_FADE_OUT  // Fading from black (revealing new state)
+    TRANSITION_NONE,    // No transition active
+    TRANSITION_FADE_IN, // Fading to black (hiding old state)
+    TRANSITION_FADE_OUT // Fading from black (revealing new state)
 } TransitionState;
 
 typedef struct {
@@ -60,7 +60,7 @@ typedef struct {
     int total_chars_typed; // Total chars user actually typed
     double elapsed_seconds;
     double wpm;
-    double cpm;
+    double cps;
     double accuracy;
 } TypingStats;
 
@@ -91,7 +91,7 @@ static Uint64 last_frame_time = 0;
 // State transition animation
 static StateTransition state_transition = {
     .state = TRANSITION_NONE,
-    .duration_ms = 100.0f  // Each phase is 100ms (200ms total)
+    .duration_ms = 100.0f // Each phase is 100ms (200ms total)
 };
 
 // Caret lerp animation
@@ -115,54 +115,55 @@ static void performStateChange(GameState new_state) {
     SDL_Log("State change: %d -> %d", old_state, new_state);
 
     switch (new_state) {
-        case LOBBY:
-            SDL_StopTextInput(window);
-            break;
+    case LOBBY:
+        SDL_StopTextInput(window);
+        break;
 
-        case TYPING:
-            // Load new words for this round
-            loadWords(word_count);
+    case TYPING:
+        // Load new words for this round
+        loadWords(word_count);
 
-            user_input[0] = '\0';
-            user_input_pos = 0;
+        user_input[0] = '\0';
+        user_input_pos = 0;
 
-            // Reset typing stats
-            memset(&typing_stats, 0, sizeof(TypingStats));
-            typing_stats.performance_frequency = SDL_GetPerformanceFrequency();
-            typing_stats.timer_started = false;
+        // Reset typing stats
+        memset(&typing_stats, 0, sizeof(TypingStats));
+        typing_stats.performance_frequency = SDL_GetPerformanceFrequency();
+        typing_stats.timer_started = false;
 
-            // Reset position error tracking
-            memset(position_had_error, false, sizeof(position_had_error));
+        // Reset position error tracking
+        memset(position_had_error, false, sizeof(position_had_error));
 
-            // Count words and characters in target_text
-            typing_stats.total_words = 0;
-            typing_stats.total_chars = 0;
-            for (const char *p = target_text; *p; p++) {
-                if (*p == ' ')
-                    typing_stats.total_words++;
-                typing_stats.total_chars++;
-            }
-            if (typing_stats.total_chars > 0)
+        // Count words and characters in target_text
+        typing_stats.total_words = 0;
+        typing_stats.total_chars = 0;
+        for (const char *p = target_text; *p; p++) {
+            if (*p == ' ')
                 typing_stats.total_words++;
+            typing_stats.total_chars++;
+        }
+        if (typing_stats.total_chars > 0)
+            typing_stats.total_words++;
 
-            // Reset caret animation
-            caret_visual_x = 0.0f;
-            caret_target_x = 0.0f;
+        // Reset caret animation
+        caret_visual_x = 0.0f;
+        caret_target_x = 0.0f;
 
-            SDL_StartTextInput(window);
-            break;
+        SDL_StartTextInput(window);
+        break;
 
-        case RESULTS:
-            // Capture end time and calculate all statistics
-            typing_stats.end_time = SDL_GetPerformanceCounter();
-            calculateTypingStats();
-            SDL_StopTextInput(window);
-            break;
+    case RESULTS:
+        // Capture end time and calculate all statistics
+        typing_stats.end_time = SDL_GetPerformanceCounter();
+        calculateTypingStats();
+        SDL_StopTextInput(window);
+        break;
     }
 }
 
 static void updateTransitionState(Uint64 current_time) {
-    if (state_transition.state == TRANSITION_NONE) return;
+    if (state_transition.state == TRANSITION_NONE)
+        return;
 
     float elapsed_ms = (current_time - state_transition.start_time) * 1000.0f /
                        (float)SDL_GetPerformanceFrequency();
@@ -184,14 +185,17 @@ static void updateTransitionState(Uint64 current_time) {
     }
 }
 
-static void renderTransitionOverlay(SDL_Renderer *renderer, Uint64 current_time) {
-    if (state_transition.state == TRANSITION_NONE) return;
+static void renderTransitionOverlay(SDL_Renderer *renderer,
+                                    Uint64 current_time) {
+    if (state_transition.state == TRANSITION_NONE)
+        return;
 
     float elapsed_ms = (current_time - state_transition.start_time) * 1000.0f /
                        (float)SDL_GetPerformanceFrequency();
 
     float alpha_ratio = elapsed_ms / state_transition.duration_ms;
-    if (alpha_ratio > 1.0f) alpha_ratio = 1.0f;
+    if (alpha_ratio > 1.0f)
+        alpha_ratio = 1.0f;
 
     int alpha;
     if (state_transition.state == TRANSITION_FADE_IN) {
@@ -203,7 +207,8 @@ static void renderTransitionOverlay(SDL_Renderer *renderer, Uint64 current_time)
     }
 
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, alpha);
+    SDL_SetRenderDrawColor(renderer, background_color.r, background_color.g,
+                           background_color.b, alpha);
 
     SDL_FRect overlay = {0, 0, window_width, window_height};
     SDL_RenderFillRect(renderer, &overlay);
@@ -235,8 +240,9 @@ static void updateCaretLerp(float delta_time) {
     caret_target_x = measured_width;
 
     // Exponential lerp toward target
-    const float lerp_factor = 15.0f;
-    caret_visual_x += (caret_target_x - caret_visual_x) * lerp_factor * delta_time;
+    const float lerp_factor = 30.0f;
+    caret_visual_x +=
+        (caret_target_x - caret_visual_x) * lerp_factor * delta_time;
 
     // Snap when very close (within 0.5 pixels)
     if (fabsf(caret_target_x - caret_visual_x) < 0.5f) {
@@ -244,17 +250,11 @@ static void updateCaretLerp(float delta_time) {
     }
 }
 
-void enterLobbyMode(void) {
-    beginTransition(LOBBY);
-}
+void enterLobbyMode(void) { beginTransition(LOBBY); }
 
-void enterTypingMode() {
-    beginTransition(TYPING);
-}
+void enterTypingMode() { beginTransition(TYPING); }
 
-void enterResultsMode() {
-    beginTransition(RESULTS);
-}
+void enterResultsMode() { beginTransition(RESULTS); }
 
 void renderLobbyGameState() {
     const float y_start = 250.0f;
@@ -270,7 +270,7 @@ void renderLobbyGameState() {
     } else {
         mode_name = "LONG";
     }
-    snprintf(mode_text, sizeof(mode_text), "MODE: %s (%d WORDS)", mode_name,
+    snprintf(mode_text, sizeof(mode_text), "%s (%d WORDS)", mode_name,
              word_count);
 
     // Mode display
@@ -280,22 +280,22 @@ void renderLobbyGameState() {
     mode_box.align = UI_ALIGN_CENTER;
     mode_box.text_color = typed_text_color;
     uiTextBoxDraw(renderer, &mode_box);
-    current_y += line_height;
+    current_y += line_height * 1.5f;
 
     // Instructions
     UITextBox instructions_box =
         uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
     instructions_box.text = "PRESS 1, 2, OR 3 TO CHANGE MODE";
-    instructions_box.font_size = 32.0f;
+    instructions_box.font_size = 42.0f;
     instructions_box.align = UI_ALIGN_CENTER;
     instructions_box.text_color = untyped_text_color;
     uiTextBoxDraw(renderer, &instructions_box);
-    current_y += line_height;
+    current_y += line_height * 1.5f;
 
     // Start message
     UITextBox start_box = uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
     start_box.text = "PRESS ENTER TO START";
-    start_box.font_size = 32.0f;
+    start_box.font_size = 42.0f;
     start_box.align = UI_ALIGN_CENTER;
     start_box.text_color = typed_text_color;
     uiTextBoxDraw(renderer, &start_box);
@@ -393,19 +393,20 @@ static void calculateTypingStats() {
         typing_stats.accuracy = 100.0;
     }
 
-    // Calculate WPM and CPM
-    double elapsed_minutes = typing_stats.elapsed_seconds / 60.0;
-    if (elapsed_minutes > 0) {
-        typing_stats.wpm = typing_stats.correct_words / elapsed_minutes;
-        typing_stats.cpm = typing_stats.correct_chars / elapsed_minutes;
+    // Calculate WPM and CPS
+    if (typing_stats.elapsed_seconds > 0) {
+        typing_stats.wpm =
+            typing_stats.correct_words / (typing_stats.elapsed_seconds / 60.0);
+        typing_stats.cps =
+            typing_stats.correct_chars / typing_stats.elapsed_seconds;
     } else {
         typing_stats.wpm = 0.0;
-        typing_stats.cpm = 0.0;
+        typing_stats.cps = 0.0;
     }
 
-    SDL_Log("Stats - Time: %.2fs, WPM: %.1f, CPM: %.1f, Accuracy: %.1f%%, "
+    SDL_Log("Stats - Time: %.2fs, WPM: %.1f, CPS: %.1f, Accuracy: %.1f%%, "
             "Words: %d/%d",
-            typing_stats.elapsed_seconds, typing_stats.wpm, typing_stats.cpm,
+            typing_stats.elapsed_seconds, typing_stats.wpm, typing_stats.cps,
             typing_stats.accuracy, typing_stats.correct_words,
             typing_stats.total_words);
 }
@@ -455,16 +456,15 @@ void renderResultsGameState() {
 
     // Use static buffers so text persists across draw calls
     static char wpm_text[64];
-    static char cpm_text[64];
+    static char cps_text[64];
     static char accuracy_text[64];
 
     // Format statistics
     snprintf(wpm_text, sizeof(wpm_text), "WPM: %.1f", typing_stats.wpm);
-    snprintf(cpm_text, sizeof(cpm_text), "CPM: %.1f", typing_stats.cpm);
+    snprintf(cps_text, sizeof(cps_text), "CPS: %.1f", typing_stats.cps);
     snprintf(accuracy_text, sizeof(accuracy_text), "ACCURACY: %.1f%%",
              typing_stats.accuracy);
 
-    // WPM display
     UITextBox wpm_box = uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
     wpm_box.text = wpm_text;
     wpm_box.font_size = 42.0f;
@@ -473,16 +473,14 @@ void renderResultsGameState() {
     uiTextBoxDraw(renderer, &wpm_box);
     current_y += line_height;
 
-    // CPM display
-    UITextBox cpm_box = uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
-    cpm_box.text = cpm_text;
-    cpm_box.font_size = 42.0f;
-    cpm_box.align = UI_ALIGN_CENTER;
-    cpm_box.text_color = typed_text_color;
-    uiTextBoxDraw(renderer, &cpm_box);
+    UITextBox cps_box = uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
+    cps_box.text = cps_text;
+    cps_box.font_size = 42.0f;
+    cps_box.align = UI_ALIGN_CENTER;
+    cps_box.text_color = typed_text_color;
+    uiTextBoxDraw(renderer, &cps_box);
     current_y += line_height;
 
-    // Accuracy display
     UITextBox accuracy_box =
         uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
     accuracy_box.text = accuracy_text;
@@ -496,7 +494,7 @@ void renderResultsGameState() {
     UITextBox continue_box =
         uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
     continue_box.text = "Enter to restart";
-    continue_box.font_size = 32.0f;
+    continue_box.font_size = 42.0f;
     continue_box.align = UI_ALIGN_CENTER;
     continue_box.text_color = untyped_text_color;
     uiTextBoxDraw(renderer, &continue_box);
@@ -505,7 +503,7 @@ void renderResultsGameState() {
     // Continue instruction
     UITextBox exit_box = uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
     exit_box.text = "Escape to return to lobby";
-    exit_box.font_size = 32.0f;
+    exit_box.font_size = 42.0f;
     exit_box.align = UI_ALIGN_CENTER;
     exit_box.text_color = untyped_text_color;
     uiTextBoxDraw(renderer, &exit_box);
