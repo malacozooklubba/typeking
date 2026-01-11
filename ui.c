@@ -24,7 +24,7 @@ UITextBox uiTextBoxCreate(float x, float y, float width, float height) {
                      .text_color = {255, 255, 255, 255},
                      .text = "",
                      .char_states = NULL,
-                     .font_size = 16.0f,
+                     .font_size = 24.0f,
                      .align = UI_ALIGN_START,
                      .caret_position = -1};
     return box;
@@ -72,8 +72,8 @@ static inline void renderAlignedLine(SDL_Renderer *renderer,
         calculateAlignedY(base_y, max_height, line_height, box->align);
 
     if (char_states != NULL) {
-        typedTextRenderDraw(renderer, line_buffer, text_x, text_y, box->font_size,
-                            char_states + char_offset);
+        typedTextRenderDraw(renderer, line_buffer, text_x, text_y,
+                            box->font_size, char_states + char_offset);
     } else {
         textRenderDraw(renderer, line_buffer, text_x, text_y, box->font_size,
                        box->text_color);
@@ -91,7 +91,8 @@ static inline void renderAlignedLine(SDL_Renderer *renderer,
 
         float caret_x_offset = 0.0f;
         if (caret_offset_in_line > 0) {
-            textRenderMeasure(temp_buffer, box->font_size, &caret_x_offset, NULL);
+            textRenderMeasure(temp_buffer, box->font_size, &caret_x_offset,
+                              NULL);
         }
 
         float caret_x = text_x + caret_x_offset;
@@ -169,11 +170,12 @@ void uiTextBoxDraw(SDL_Renderer *renderer, const UITextBox *box) {
                             line_buffer[line_pos] = '\0';
                             renderAlignedLine(renderer, line_buffer, base_x,
                                               text_y, max_width, max_height,
-                                              box, box->char_states, char_offset,
-                                              line_pos);
+                                              box, box->char_states,
+                                              char_offset, line_pos);
 
                             text_y += line_height;
-                            char_offset += line_pos; // Update offset for next line
+                            char_offset +=
+                                line_pos; // Update offset for next line
                             line_pos = 0;
                             current_line_width = 0.0f;
                         }
