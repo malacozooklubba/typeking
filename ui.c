@@ -67,9 +67,6 @@ static inline void renderAlignedLine(SDL_Renderer *renderer,
     float text_y =
         calculateAlignedY(base_y, max_height, line_height, box->align);
 
-    // textRenderDraw(renderer, line_buffer, text_x, text_y, box->font_size,
-    //                box->text_color);
-
     typedTextRenderDraw(renderer, line_buffer, text_x, text_y, box->font_size,
                         0);
 }
