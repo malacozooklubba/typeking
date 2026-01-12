@@ -1,5 +1,6 @@
 #include "debug_ui.h"
 #include "text_render.h"
+#include "theme.h"
 #include "ui.h"
 #include <SDL3/SDL_keycode.h>
 #include <SDL3/SDL_oldnames.h>
@@ -65,10 +66,23 @@ typedef struct {
 } TypingStats;
 
 const char game_name[] = "Type King";
-const SDL_Color background_color = {0x1D, 0x23, 0x2F, 0xFF};
-const SDL_Color untyped_text_color = {0x57, 0x65, 0x81, 0xFF};
-const SDL_Color typed_text_color = {0xE9, 0xD7, 0xB1, 0xFF};
-const SDL_Color error_text_color = {0xD4, 0x31, 0x31, 0xFF};
+
+// Line break precalculation structures
+#define MAX_LINES 50
+
+typedef struct {
+    int start_char_index; // Character index where line starts (inclusive)
+    int end_char_index;   // Character index where line ends (exclusive)
+    int char_count;       // Number of characters on this line
+} LineBreak;
+
+typedef struct {
+    LineBreak lines[MAX_LINES];
+    int line_count;
+    float max_width; // Width constraint used for calculation
+    float font_size; // Font size used for calculation
+    bool is_valid;   // Whether this layout is valid
+} TextLayout;
 
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
@@ -85,6 +99,10 @@ static TypingStats typing_stats = {0};
 static int word_count = MODE_SHORT;
 static bool position_had_error[MAX_WORD_LENGTH * MAX_WORD_COUNT] = {false};
 
+// Precalculated text layouts
+static TextLayout target_text_layout = {0};
+static TextLayout user_input_layout = {0};
+
 // Animation timing
 static Uint64 last_frame_time = 0;
 
@@ -97,10 +115,13 @@ static StateTransition state_transition = {
 // Caret lerp animation
 static float caret_visual_x = 0.0f;
 static float caret_target_x = 0.0f;
+static int caret_current_line = 0; // Track which line caret is on
 
 // Forward declarations
 static void calculateTypingStats(void);
 static void loadWords(int count);
+static bool calculateTextLayout(TextLayout *layout, const char *text,
+                                float max_width, float font_size);
 
 static void beginTransition(GameState target) {
     state_transition.state = TRANSITION_FADE_IN;
@@ -148,6 +169,15 @@ static void performStateChange(GameState new_state) {
         // Reset caret animation
         caret_visual_x = 0.0f;
         caret_target_x = 0.0f;
+        caret_current_line = 0;
+
+        // Calculate text layouts
+        const float window_padding = 50.0f;
+        float text_max_width = window_width - window_padding * 2;
+        calculateTextLayout(&target_text_layout, target_text, text_max_width,
+                            FONT_SIZE);
+        calculateTextLayout(&user_input_layout, user_input, text_max_width,
+                            FONT_SIZE);
 
         SDL_StartTextInput(window);
         break;
@@ -207,8 +237,8 @@ static void renderTransitionOverlay(SDL_Renderer *renderer,
     }
 
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-    SDL_SetRenderDrawColor(renderer, background_color.r, background_color.g,
-                           background_color.b, alpha);
+    SDL_SetRenderDrawColor(renderer, THEME_BACKGROUND.r, THEME_BACKGROUND.g,
+                           THEME_BACKGROUND.b, alpha);
 
     SDL_FRect overlay = {0, 0, window_width, window_height};
     SDL_RenderFillRect(renderer, &overlay);
@@ -216,10 +246,128 @@ static void renderTransitionOverlay(SDL_Renderer *renderer,
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
 }
 
+// Calculate line breaks for text with word wrapping
+static bool calculateTextLayout(TextLayout *layout, const char *text,
+                                float max_width, float font_size) {
+    // Initialize layout
+    layout->line_count = 0;
+    layout->max_width = max_width;
+    layout->font_size = font_size;
+    layout->is_valid = true;
+
+    // Handle empty text
+    if (!text || text[0] == '\0') {
+        return true;
+    }
+
+    // Measure space width once
+    float space_width;
+    textRenderMeasure(" ", font_size, &space_width, NULL);
+
+    int line_start = 0;
+    int line_length = 0;
+    float current_line_width = 0.0f;
+
+    const char *word_start = text;
+    const char *p = text;
+
+    while (*p) {
+        // Word boundary detection (EXACT same as ui.c line 157)
+        if (*p == ' ' || *(p + 1) == '\0') {
+            int word_len = (p - word_start + 1);
+
+            if (word_len > 0 && word_len < 64) {
+                char word_buffer[64];
+                strncpy(word_buffer, word_start, word_len);
+                word_buffer[word_len] = '\0';
+
+                float word_width;
+                textRenderMeasure(word_buffer, font_size, &word_width, NULL);
+
+                if (line_length > 0) {
+                    // ALWAYS add space_width (matches ui.c line 175)
+                    float required_width =
+                        current_line_width + word_width + space_width;
+
+                    if (required_width > max_width) {
+                        // Save current line before wrapping
+                        if (layout->line_count >= MAX_LINES) {
+                            layout->is_valid = false;
+                            return false;
+                        }
+
+                        layout->lines[layout->line_count].start_char_index =
+                            line_start;
+                        layout->lines[layout->line_count].end_char_index =
+                            line_start + line_length;
+                        layout->lines[layout->line_count].char_count =
+                            line_length;
+                        layout->line_count++;
+
+                        // Start new line
+                        line_start = line_start + line_length;
+                        line_length = 0;
+                        current_line_width = 0.0f;
+                    }
+                }
+
+                line_length += word_len;
+                current_line_width += word_width;
+            }
+
+            word_start = p + 1;
+        }
+        p++;
+    }
+
+    // Save final line
+    if (line_length > 0 && layout->line_count < MAX_LINES) {
+        layout->lines[layout->line_count].start_char_index = line_start;
+        layout->lines[layout->line_count].end_char_index =
+            line_start + line_length;
+        layout->lines[layout->line_count].char_count = line_length;
+        layout->line_count++;
+    }
+
+    return true;
+}
+
+// Find which line contains the caret using precalculated layout
+static int findCaretLine(int caret_pos, const TextLayout *layout,
+                         int *line_start_offset) {
+    if (!layout || !layout->is_valid || layout->line_count == 0) {
+        *line_start_offset = 0;
+        return 0;
+    }
+
+    // Find which line contains the caret position
+    for (int i = 0; i < layout->line_count; i++) {
+        const LineBreak *line = &layout->lines[i];
+
+        // Caret is on this line if position is within range
+        if (caret_pos >= line->start_char_index &&
+            caret_pos < line->end_char_index) {
+            *line_start_offset = line->start_char_index;
+            return i;
+        }
+    }
+
+    // Caret is at the end (after last line)
+    if (layout->line_count > 0) {
+        int last_line = layout->line_count - 1;
+        *line_start_offset = layout->lines[last_line].start_char_index;
+        return last_line;
+    }
+
+    *line_start_offset = 0;
+    return 0;
+}
+
 static void updateCaretLerp(float delta_time) {
     if (game_state != TYPING) {
         caret_visual_x = 0.0f;
         caret_target_x = 0.0f;
+        caret_current_line = 0;
         return;
     }
 
@@ -227,19 +375,45 @@ static void updateCaretLerp(float delta_time) {
     if (user_input_pos == 0) {
         caret_target_x = 0.0f;
         caret_visual_x = 0.0f;
+        caret_current_line = 0;
         return;
     }
 
-    // Measure text width up to caret position
+    // Find which line the caret is on using precalculated layout
+    int line_start_offset = 0;
+    int new_line =
+        findCaretLine(user_input_pos, &user_input_layout, &line_start_offset);
+
+    // Detect line change - snap immediately (no animation)
+    if (new_line != caret_current_line) {
+        caret_current_line = new_line;
+
+        // Measure text from line start to caret position
+        int chars_on_line = user_input_pos - line_start_offset;
+        char temp_text[MAX_WORD_LENGTH * MAX_WORD_COUNT];
+        strncpy(temp_text, user_input + line_start_offset, chars_on_line);
+        temp_text[chars_on_line] = '\0';
+
+        float measured_width;
+        textRenderMeasure(temp_text, FONT_SIZE, &measured_width, NULL);
+
+        // Snap instantly (no lerp)
+        caret_target_x = measured_width;
+        caret_visual_x = measured_width;
+        return;
+    }
+
+    // Same line - measure text from line start to caret position
+    int chars_on_line = user_input_pos - line_start_offset;
     char temp_text[MAX_WORD_LENGTH * MAX_WORD_COUNT];
-    strncpy(temp_text, user_input, user_input_pos);
-    temp_text[user_input_pos] = '\0';
+    strncpy(temp_text, user_input + line_start_offset, chars_on_line);
+    temp_text[chars_on_line] = '\0';
 
     float measured_width;
     textRenderMeasure(temp_text, FONT_SIZE, &measured_width, NULL);
     caret_target_x = measured_width;
 
-    // Exponential lerp toward target
+    // Exponential lerp toward target (smooth animation within line)
     const float lerp_factor = 30.0f;
     caret_visual_x +=
         (caret_target_x - caret_visual_x) * lerp_factor * delta_time;
@@ -278,7 +452,7 @@ void renderLobbyGameState() {
     mode_box.text = mode_text;
     mode_box.font_size = 42.0f;
     mode_box.align = UI_ALIGN_CENTER;
-    mode_box.text_color = typed_text_color;
+    mode_box.text_color = THEME_TEXT_TYPED;
     uiTextBoxDraw(renderer, &mode_box);
     current_y += line_height * 1.5f;
 
@@ -288,7 +462,7 @@ void renderLobbyGameState() {
     instructions_box.text = "PRESS 1, 2, OR 3 TO CHANGE MODE";
     instructions_box.font_size = 42.0f;
     instructions_box.align = UI_ALIGN_CENTER;
-    instructions_box.text_color = untyped_text_color;
+    instructions_box.text_color = THEME_TEXT_UNTYPED;
     uiTextBoxDraw(renderer, &instructions_box);
     current_y += line_height * 1.5f;
 
@@ -297,7 +471,7 @@ void renderLobbyGameState() {
     start_box.text = "PRESS ENTER TO START";
     start_box.font_size = 42.0f;
     start_box.align = UI_ALIGN_CENTER;
-    start_box.text_color = typed_text_color;
+    start_box.text_color = THEME_TEXT_TYPED;
     uiTextBoxDraw(renderer, &start_box);
 }
 
@@ -441,8 +615,8 @@ void renderTypingGameState() {
     box1.char_states = char_states;
     box1.font_size = 42.0f;
     box1.align = UI_ALIGN_START;
-    box1.text_color = untyped_text_color;
-    box1.bg_color = background_color;
+    box1.text_color = THEME_TEXT_UNTYPED;
+    box1.bg_color = THEME_BACKGROUND;
     box1.caret_position = user_input_pos;
     box1.caret_visual_x_offset = caret_visual_x;
 
@@ -469,7 +643,7 @@ void renderResultsGameState() {
     wpm_box.text = wpm_text;
     wpm_box.font_size = 42.0f;
     wpm_box.align = UI_ALIGN_CENTER;
-    wpm_box.text_color = typed_text_color;
+    wpm_box.text_color = THEME_TEXT_TYPED;
     uiTextBoxDraw(renderer, &wpm_box);
     current_y += line_height;
 
@@ -477,7 +651,7 @@ void renderResultsGameState() {
     cps_box.text = cps_text;
     cps_box.font_size = 42.0f;
     cps_box.align = UI_ALIGN_CENTER;
-    cps_box.text_color = typed_text_color;
+    cps_box.text_color = THEME_TEXT_TYPED;
     uiTextBoxDraw(renderer, &cps_box);
     current_y += line_height;
 
@@ -486,7 +660,7 @@ void renderResultsGameState() {
     accuracy_box.text = accuracy_text;
     accuracy_box.font_size = 42.0f;
     accuracy_box.align = UI_ALIGN_CENTER;
-    accuracy_box.text_color = typed_text_color;
+    accuracy_box.text_color = THEME_TEXT_TYPED;
     uiTextBoxDraw(renderer, &accuracy_box);
     current_y += line_height * 1.5f;
 
@@ -496,7 +670,7 @@ void renderResultsGameState() {
     continue_box.text = "Enter to restart";
     continue_box.font_size = 42.0f;
     continue_box.align = UI_ALIGN_CENTER;
-    continue_box.text_color = untyped_text_color;
+    continue_box.text_color = THEME_TEXT_UNTYPED;
     uiTextBoxDraw(renderer, &continue_box);
     current_y += line_height;
 
@@ -505,7 +679,7 @@ void renderResultsGameState() {
     exit_box.text = "Escape to return to lobby";
     exit_box.font_size = 42.0f;
     exit_box.align = UI_ALIGN_CENTER;
-    exit_box.text_color = untyped_text_color;
+    exit_box.text_color = THEME_TEXT_UNTYPED;
     uiTextBoxDraw(renderer, &exit_box);
 }
 
@@ -623,6 +797,16 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
     }
     if (event->type == SDL_EVENT_WINDOW_RESIZED) {
         SDL_GetWindowSizeInPixels(window, &window_width, &window_height);
+
+        // Recalculate layouts if in typing mode
+        if (game_state == TYPING) {
+            const float window_padding = 50.0f;
+            float text_max_width = window_width - window_padding * 2;
+            calculateTextLayout(&target_text_layout, target_text,
+                                text_max_width, FONT_SIZE);
+            calculateTextLayout(&user_input_layout, user_input, text_max_width,
+                                FONT_SIZE);
+        }
     }
     if (event->type == SDL_EVENT_KEY_DOWN) {
         if (event->key.key == SDLK_F3) {
@@ -655,6 +839,12 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
                 if (user_input_pos > 0) {
                     user_input_pos--;
                     user_input[user_input_pos] = '\0';
+
+                    // Recalculate layout
+                    const float window_padding = 50.0f;
+                    float text_max_width = window_width - window_padding * 2;
+                    calculateTextLayout(&user_input_layout, user_input,
+                                        text_max_width, FONT_SIZE);
                 }
             }
         }
@@ -675,6 +865,12 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
                 // Add character to buffer
                 user_input[user_input_pos++] = typed_char;
                 user_input[user_input_pos] = '\0';
+
+                // Recalculate layout
+                const float window_padding = 50.0f;
+                float text_max_width = window_width - window_padding * 2;
+                calculateTextLayout(&user_input_layout, user_input,
+                                    text_max_width, FONT_SIZE);
 
                 // Check if this is an error and hasn't been counted yet
                 if (current_pos < strlen(target_text)) {
@@ -729,8 +925,8 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     debugUIResetDrawCalls();
 
     /* ==== Render Loop ==== */
-    SDL_SetRenderDrawColor(renderer, background_color.r, background_color.g,
-                           background_color.b, background_color.a);
+    SDL_SetRenderDrawColor(renderer, THEME_BACKGROUND.r, THEME_BACKGROUND.g,
+                           THEME_BACKGROUND.b, THEME_BACKGROUND.a);
     SDL_RenderClear(renderer);
 
     // Run game state machine

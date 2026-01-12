@@ -82,28 +82,13 @@ static inline void renderAlignedLine(SDL_Renderer *renderer,
 
     // Draw caret if it's on this line
     if (box->caret_position >= char_offset &&
-        box->caret_position <= char_offset + line_length) {
+        box->caret_position < char_offset + line_length) {
         int caret_offset_in_line = box->caret_position - char_offset;
 
         float caret_x;
 
         // Use visual lerp position on first line only
-        // if (char_offset == 0) {
         caret_x = text_x + box->caret_visual_x_offset;
-        // } else {
-        //     // On wrapped lines, use discrete position
-        //     char temp_buffer[1024];
-        //     strncpy(temp_buffer, line_buffer, caret_offset_in_line);
-        //     temp_buffer[caret_offset_in_line] = '\0';
-
-        //     float caret_x_offset = 0.0f;
-        //     if (caret_offset_in_line > 0) {
-        //         textRenderMeasure(temp_buffer, box->font_size,
-        //         &caret_x_offset,
-        //                           NULL);
-        //     }
-        //     caret_x = text_x + caret_x_offset;
-        // }
 
         float ascent, descent;
         textRenderGetMetrics(box->font_size, &ascent, &descent, NULL);
