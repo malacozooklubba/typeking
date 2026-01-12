@@ -1,16 +1,9 @@
 #include "ui.h"
 #include "debug_ui.h"
 #include "text_render.h"
+#include "theme.h"
 #include <SDL3/SDL.h>
-#include <math.h>
 #include <string.h>
-
-// Remove these once we have a proper color scheme for the UI
-// Then we can use the colors from the theme instead of these hardcoded ones
-// here and in main.
-const SDL_Color ui_untyped_text_color = {0x57, 0x65, 0x81, 0xFF};
-const SDL_Color ui_typed_text_color = {0xE9, 0xD7, 0xB1, 0xFF};
-const SDL_Color ui_error_text_color = {0xD4, 0x31, 0x31, 0xFF};
 
 UITextBox uiTextBoxCreate(float x, float y, float width, float height) {
     UITextBox box = {.x = x,
@@ -21,11 +14,11 @@ UITextBox uiTextBoxCreate(float x, float y, float width, float height) {
                                  .right = 10.0f,
                                  .bottom = 10.0f,
                                  .left = 10.0f},
-                     .bg_color = {255, 0, 255, 255},
-                     .text_color = {255, 255, 255, 255},
+                     .bg_color = THEME_BACKGROUND,
+                     .text_color = THEME_TEXT_TYPED,
                      .text = "",
                      .char_states = NULL,
-                     .font_size = 24.0f,
+                     .font_size = 42.0f,
                      .align = UI_ALIGN_START,
                      .caret_position = -1};
     return box;
@@ -76,8 +69,7 @@ static inline void renderAlignedLine(SDL_Renderer *renderer,
         typedTextRenderDraw(renderer, line_buffer, text_x, text_y,
                             box->font_size, char_states + char_offset);
     } else {
-        textRenderDraw(renderer, line_buffer, text_x, text_y, box->font_size,
-                       box->text_color);
+        SDL_Log("char_states is NULL");
     }
 
     // Draw caret if it's on this line
@@ -96,7 +88,7 @@ static inline void renderAlignedLine(SDL_Renderer *renderer,
         float caret_height = ascent - descent;
 
         // Draw caret as a vertical line
-        SDL_Color caret_color = ui_typed_text_color;
+        SDL_Color caret_color = THEME_TEXT_TYPED;
         SDL_SetRenderDrawColor(renderer, caret_color.r, caret_color.g,
                                caret_color.b, caret_color.a);
         SDL_FRect caret_rect = {caret_x, caret_y, 2.0f, caret_height};

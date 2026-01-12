@@ -1,4 +1,6 @@
 #include "debug_ui.h"
+#include "font_cache.h"
+#include "text_layout_calculator.h"
 #include "text_render.h"
 #include "theme.h"
 #include "ui.h"
@@ -67,23 +69,6 @@ typedef struct {
 
 const char game_name[] = "Type King";
 
-// Line break precalculation structures
-#define MAX_LINES 50
-
-typedef struct {
-    int start_char_index; // Character index where line starts (inclusive)
-    int end_char_index;   // Character index where line ends (exclusive)
-    int char_count;       // Number of characters on this line
-} LineBreak;
-
-typedef struct {
-    LineBreak lines[MAX_LINES];
-    int line_count;
-    float max_width; // Width constraint used for calculation
-    float font_size; // Font size used for calculation
-    bool is_valid;   // Whether this layout is valid
-} TextLayout;
-
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
 static int window_width = 1024;
@@ -120,8 +105,8 @@ static int caret_current_line = 0; // Track which line caret is on
 // Forward declarations
 static void calculateTypingStats(void);
 static void loadWords(int count);
-static bool calculateTextLayout(TextLayout *layout, const char *text,
-                                float max_width, float font_size);
+// static bool calculateTextLayout(TextLayout *layout, const char *text,
+//                                 float max_width, float font_size);
 
 static void beginTransition(GameState target) {
     state_transition.state = TRANSITION_FADE_IN;
@@ -247,90 +232,90 @@ static void renderTransitionOverlay(SDL_Renderer *renderer,
 }
 
 // Calculate line breaks for text with word wrapping
-static bool calculateTextLayout(TextLayout *layout, const char *text,
-                                float max_width, float font_size) {
-    // Initialize layout
-    layout->line_count = 0;
-    layout->max_width = max_width;
-    layout->font_size = font_size;
-    layout->is_valid = true;
-
-    // Handle empty text
-    if (!text || text[0] == '\0') {
-        return true;
-    }
-
-    // Measure space width once
-    float space_width;
-    textRenderMeasure(" ", font_size, &space_width, NULL);
-
-    int line_start = 0;
-    int line_length = 0;
-    float current_line_width = 0.0f;
-
-    const char *word_start = text;
-    const char *p = text;
-
-    while (*p) {
-        // Word boundary detection (EXACT same as ui.c line 157)
-        if (*p == ' ' || *(p + 1) == '\0') {
-            int word_len = (p - word_start + 1);
-
-            if (word_len > 0 && word_len < 64) {
-                char word_buffer[64];
-                strncpy(word_buffer, word_start, word_len);
-                word_buffer[word_len] = '\0';
-
-                float word_width;
-                textRenderMeasure(word_buffer, font_size, &word_width, NULL);
-
-                if (line_length > 0) {
-                    // ALWAYS add space_width (matches ui.c line 175)
-                    float required_width =
-                        current_line_width + word_width + space_width;
-
-                    if (required_width > max_width) {
-                        // Save current line before wrapping
-                        if (layout->line_count >= MAX_LINES) {
-                            layout->is_valid = false;
-                            return false;
-                        }
-
-                        layout->lines[layout->line_count].start_char_index =
-                            line_start;
-                        layout->lines[layout->line_count].end_char_index =
-                            line_start + line_length;
-                        layout->lines[layout->line_count].char_count =
-                            line_length;
-                        layout->line_count++;
-
-                        // Start new line
-                        line_start = line_start + line_length;
-                        line_length = 0;
-                        current_line_width = 0.0f;
-                    }
-                }
-
-                line_length += word_len;
-                current_line_width += word_width;
-            }
-
-            word_start = p + 1;
-        }
-        p++;
-    }
-
-    // Save final line
-    if (line_length > 0 && layout->line_count < MAX_LINES) {
-        layout->lines[layout->line_count].start_char_index = line_start;
-        layout->lines[layout->line_count].end_char_index =
-            line_start + line_length;
-        layout->lines[layout->line_count].char_count = line_length;
-        layout->line_count++;
-    }
-
-    return true;
-}
+// static bool calculateTextLayout(TextLayout *layout, const char *text,
+//                                 float max_width, float font_size) {
+//     // Initialize layout
+//     layout->line_count = 0;
+//     layout->max_width = max_width;
+//     layout->font_size = font_size;
+//     layout->is_valid = true;
+//
+//     // Handle empty text
+//     if (!text || text[0] == '\0') {
+//         return true;
+//     }
+//
+//     // Measure space width once
+//     float space_width;
+//     textRenderMeasure(" ", font_size, &space_width, NULL);
+//
+//     int line_start = 0;
+//     int line_length = 0;
+//     float current_line_width = 0.0f;
+//
+//     const char *word_start = text;
+//     const char *p = text;
+//
+//     while (*p) {
+//         // Word boundary detection (EXACT same as ui.c line 157)
+//         if (*p == ' ' || *(p + 1) == '\0') {
+//             int word_len = (p - word_start + 1);
+//
+//             if (word_len > 0 && word_len < 64) {
+//                 char word_buffer[64];
+//                 strncpy(word_buffer, word_start, word_len);
+//                 word_buffer[word_len] = '\0';
+//
+//                 float word_width;
+//                 textRenderMeasure(word_buffer, font_size, &word_width, NULL);
+//
+//                 if (line_length > 0) {
+//                     // ALWAYS add space_width (matches ui.c line 175)
+//                     float required_width =
+//                         current_line_width + word_width + space_width;
+//
+//                     if (required_width > max_width) {
+//                         // Save current line before wrapping
+//                         if (layout->line_count >= MAX_LINES) {
+//                             layout->is_valid = false;
+//                             return false;
+//                         }
+//
+//                         layout->lines[layout->line_count].start_char_index =
+//                             line_start;
+//                         layout->lines[layout->line_count].end_char_index =
+//                             line_start + line_length;
+//                         layout->lines[layout->line_count].char_count =
+//                             line_length;
+//                         layout->line_count++;
+//
+//                         // Start new line
+//                         line_start = line_start + line_length;
+//                         line_length = 0;
+//                         current_line_width = 0.0f;
+//                     }
+//                 }
+//
+//                 line_length += word_len;
+//                 current_line_width += word_width;
+//             }
+//
+//             word_start = p + 1;
+//         }
+//         p++;
+//     }
+//
+//     // Save final line
+//     if (line_length > 0 && layout->line_count < MAX_LINES) {
+//         layout->lines[layout->line_count].start_char_index = line_start;
+//         layout->lines[layout->line_count].end_char_index =
+//             line_start + line_length;
+//         layout->lines[layout->line_count].char_count = line_length;
+//         layout->line_count++;
+//     }
+//
+//     return true;
+// }
 
 // Find which line contains the caret using precalculated layout
 static int findCaretLine(int caret_pos, const TextLayout *layout,
@@ -426,7 +411,20 @@ static void updateCaretLerp(float delta_time) {
 
 void enterLobbyMode(void) { beginTransition(LOBBY); }
 
-void enterTypingMode() { beginTransition(TYPING); }
+void enterTypingMode() {
+    // Calculate text box layout
+    int *user_input_line_starts = malloc(sizeof(int) * MAX_LINES);
+    int lineCount;
+
+    lineCount = calculateTextLines(target_text, FONT_SIZE, window_width,
+                                   user_input_line_starts);
+
+    for (int i = 0; i < lineCount; i++) {
+        SDL_Log("Line %d: %d", i, user_input_line_starts[i]);
+    }
+
+    beginTransition(TYPING);
+}
 
 void enterResultsMode() { beginTransition(RESULTS); }
 
@@ -450,7 +448,6 @@ void renderLobbyGameState() {
     // Mode display
     UITextBox mode_box = uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
     mode_box.text = mode_text;
-    mode_box.font_size = 42.0f;
     mode_box.align = UI_ALIGN_CENTER;
     mode_box.text_color = THEME_TEXT_TYPED;
     uiTextBoxDraw(renderer, &mode_box);
@@ -460,7 +457,6 @@ void renderLobbyGameState() {
     UITextBox instructions_box =
         uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
     instructions_box.text = "PRESS 1, 2, OR 3 TO CHANGE MODE";
-    instructions_box.font_size = 42.0f;
     instructions_box.align = UI_ALIGN_CENTER;
     instructions_box.text_color = THEME_TEXT_UNTYPED;
     uiTextBoxDraw(renderer, &instructions_box);
@@ -469,7 +465,6 @@ void renderLobbyGameState() {
     // Start message
     UITextBox start_box = uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
     start_box.text = "PRESS ENTER TO START";
-    start_box.font_size = 42.0f;
     start_box.align = UI_ALIGN_CENTER;
     start_box.text_color = THEME_TEXT_TYPED;
     uiTextBoxDraw(renderer, &start_box);
@@ -613,7 +608,6 @@ void renderTypingGameState() {
 
     box1.text = display_text;
     box1.char_states = char_states;
-    box1.font_size = 42.0f;
     box1.align = UI_ALIGN_START;
     box1.text_color = THEME_TEXT_UNTYPED;
     box1.bg_color = THEME_BACKGROUND;
@@ -641,7 +635,6 @@ void renderResultsGameState() {
 
     UITextBox wpm_box = uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
     wpm_box.text = wpm_text;
-    wpm_box.font_size = 42.0f;
     wpm_box.align = UI_ALIGN_CENTER;
     wpm_box.text_color = THEME_TEXT_TYPED;
     uiTextBoxDraw(renderer, &wpm_box);
@@ -649,7 +642,6 @@ void renderResultsGameState() {
 
     UITextBox cps_box = uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
     cps_box.text = cps_text;
-    cps_box.font_size = 42.0f;
     cps_box.align = UI_ALIGN_CENTER;
     cps_box.text_color = THEME_TEXT_TYPED;
     uiTextBoxDraw(renderer, &cps_box);
@@ -658,7 +650,6 @@ void renderResultsGameState() {
     UITextBox accuracy_box =
         uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
     accuracy_box.text = accuracy_text;
-    accuracy_box.font_size = 42.0f;
     accuracy_box.align = UI_ALIGN_CENTER;
     accuracy_box.text_color = THEME_TEXT_TYPED;
     uiTextBoxDraw(renderer, &accuracy_box);
@@ -668,7 +659,6 @@ void renderResultsGameState() {
     UITextBox continue_box =
         uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
     continue_box.text = "Enter to restart";
-    continue_box.font_size = 42.0f;
     continue_box.align = UI_ALIGN_CENTER;
     continue_box.text_color = THEME_TEXT_UNTYPED;
     uiTextBoxDraw(renderer, &continue_box);
@@ -677,7 +667,6 @@ void renderResultsGameState() {
     // Continue instruction
     UITextBox exit_box = uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
     exit_box.text = "Escape to return to lobby";
-    exit_box.font_size = 42.0f;
     exit_box.align = UI_ALIGN_CENTER;
     exit_box.text_color = THEME_TEXT_UNTYPED;
     uiTextBoxDraw(renderer, &exit_box);
@@ -770,8 +759,8 @@ SDL_AppResult SDL_AppInit(__attribute__((unused)) void **appstate,
         return SDL_APP_FAILURE;
     }
 
-    if (!textRenderInit(renderer, "./bin/font/JetBrainsMono-Regular.ttf",
-                        FONT_SIZE)) {
+    if (!fontCacheInit(renderer, "./bin/font/JetBrainsMono-Regular.ttf",
+                       FONT_SIZE)) {
         SDL_Log("Failed to initialize text rendering");
         return SDL_APP_FAILURE;
     }
@@ -964,5 +953,5 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 void SDL_AppQuit(__attribute__((unused)) void *appstate,
                  __attribute__((unused)) SDL_AppResult result) {
     debugUIQuit();
-    textRenderQuit();
+    textCacheQuit();
 }

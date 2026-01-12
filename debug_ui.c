@@ -1,5 +1,4 @@
 #include "debug_ui.h"
-#include "text_render.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
 #include <string.h>
@@ -109,24 +108,24 @@ void debugUIDraw(SDL_Renderer *renderer, int window_width, int window_height) {
     // Draw FPS
     char text_buffer[128];
     snprintf(text_buffer, sizeof(text_buffer), "FPS: %.1f", debug.fps);
-    textRenderDraw(renderer, text_buffer, x + padding, text_y, 24.0f, green);
+    // textRenderDraw(renderer, text_buffer, x + padding, text_y, 24.0f, green);
     text_y += 24.0f;
 
     // Draw frame time stats
     snprintf(text_buffer, sizeof(text_buffer), "Frame: %.2fms (avg)",
              avg_frame_time);
-    textRenderDraw(renderer, text_buffer, x + padding, text_y, 24.0f, white);
+    // textRenderDraw(renderer, text_buffer, x + padding, text_y, 24.0f, white);
     text_y += 24.0f;
 
     snprintf(text_buffer, sizeof(text_buffer), "Min: %.2fms | Max: %.2fms",
              min_frame_time, max_frame_time);
-    textRenderDraw(renderer, text_buffer, x + padding, text_y, 24.0f, white);
+    // textRenderDraw(renderer, text_buffer, x + padding, text_y, 24.0f, white);
     text_y += 24.0f;
 
     // Draw draw calls
     snprintf(text_buffer, sizeof(text_buffer), "Draw Calls: %d (avg: %d)",
              debug.draw_calls, avg_draw_calls);
-    textRenderDraw(renderer, text_buffer, x + padding, text_y, 24.0f, white);
+    // textRenderDraw(renderer, text_buffer, x + padding, text_y, 24.0f, white);
     text_y += 24.0f;
 
     // Draw frame time graph

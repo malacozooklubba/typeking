@@ -1,25 +1,17 @@
 #pragma once
 
+#include "font_cache.h"
 #include <SDL3/SDL_render.h>
 #include <stdbool.h>
 
-// Initialize font rendering system with pre-rasterized glyph cache
-// font_path: Path to TTF font file
-// renderer: SDL_Renderer to create textures with
-// font_size: Size in pixels to pre-rasterize (e.g., 42.0f)
-// Returns: true on success, false on failure
-bool textRenderInit(SDL_Renderer *renderer, const char *font_path,
-                    float font_size);
-
-// Cleanup font rendering resources
-void textRenderQuit(void);
-
 // Render a single line of text at position (x, y)
 void textRenderDraw(SDL_Renderer *renderer, const char *text, float x, float y,
-                    float font_size, SDL_Color color);
+                    GlyphCacheEntry *glyph_cache, FontMetricsCache metrics,
+                    SDL_Color color);
 
 void typedTextRenderDraw(SDL_Renderer *renderer, const char *text, float x,
-                         float y, float font_size, const unsigned char *char_states);
+                         float y, float font_size,
+                         const unsigned char *char_states);
 
 // Measure text dimensions without rendering (uses advance widths)
 void textRenderMeasure(const char *text, float font_size, float *width,
