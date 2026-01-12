@@ -211,6 +211,4 @@ void fontCacheQuit() {
         free(ttf_buffer);
         ttf_buffer = NULL;
     }
-
-    cached_font_size = 0.0f;
 }

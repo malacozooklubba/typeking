@@ -953,5 +953,5 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 void SDL_AppQuit(__attribute__((unused)) void *appstate,
                  __attribute__((unused)) SDL_AppResult result) {
     debugUIQuit();
-    textCacheQuit();
+    fontCacheQuit();
 }

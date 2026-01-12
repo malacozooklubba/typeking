@@ -5,13 +5,6 @@
 #include <SDL3/SDL_oldnames.h>
 #include <SDL3/SDL_pixels.h>
 
-#define SDL_MAIN_USE_CALLBACKS 1
-#include <SDL3/SDL.h>
-#include <SDL3/SDL_main.h>
-
-#define STB_TRUETYPE_IMPLEMENTATION
-#include "stb_truetype.h"
-
 #define CACHE_START_CHAR 32
 #define CACHE_END_CHAR 126
 #define CACHE_SIZE 95

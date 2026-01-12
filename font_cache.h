@@ -23,4 +23,4 @@ GlyphCacheEntry getGlyphCacheEntry(int codepoint);
 
 FontMetricsCache getFontMetricsCache();
 
-void textCacheQuit();
+void fontCacheQuit();
