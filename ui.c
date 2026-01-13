@@ -1,5 +1,5 @@
 #include "ui.h"
-#include "debug_ui.h"
+#include "text_layout_calculator.h"
 #include "text_render.h"
 #include "theme.h"
 #include <SDL3/SDL.h>
@@ -69,7 +69,8 @@ static inline void renderAlignedLine(SDL_Renderer *renderer,
         typedTextRenderDraw(renderer, line_buffer, text_x, text_y,
                             box->font_size, char_states + char_offset);
     } else {
-        SDL_Log("char_states is NULL");
+        textRenderDraw(renderer, line_buffer, text_x, text_y, getGlyphCache(),
+                       getFontMetricsCache(), box->text_color);
     }
 
     // Draw caret if it's on this line
@@ -93,7 +94,64 @@ static inline void renderAlignedLine(SDL_Renderer *renderer,
                                caret_color.b, caret_color.a);
         SDL_FRect caret_rect = {caret_x, caret_y, 2.0f, caret_height};
         SDL_RenderFillRect(renderer, &caret_rect);
-        debugUIIncrementDrawCalls();
+    }
+}
+
+void drawPrecalculatedTextLayout(SDL_Renderer *renderer, const UITextBox *box) {
+
+    if (!renderer || !box) {
+        return;
+    }
+
+    // Draw background
+    SDL_FRect bg_rect = {
+        .x = box->x, .y = box->y, .w = box->width, .h = box->height};
+
+    SDL_RenderFillRect(renderer, &bg_rect);
+
+    if (!box->text && box->text[0] == '\0') {
+        return;
+    }
+
+    float base_x = box->x + box->padding.left;
+    float text_y = box->y + box->padding.top;
+    float line_height = textRenderGetLineHeight(box->font_size);
+    float max_width = box->width - box->padding.left - box->padding.right;
+    float max_height = box->height - box->padding.top - box->padding.bottom;
+
+    char line_buffer[1024];
+    int line_pos = 0;
+    int line_width = 0;
+    int line_count = 0;
+    PrecalculatedTextLayout text_layout = getCalculatedTextLayout();
+
+    const char *word_start = box->text;
+    const char *p = box->text;
+
+    for (int i = 0; i < text_layout.line_count; i++) {
+        int line_start = text_layout.line_starts[i];
+        int line_end;
+
+        // For the last line, go to end of text; otherwise use next line's start
+        if (i == text_layout.line_count - 1) {
+            line_end = strlen(box->text);
+        } else {
+            line_end = text_layout.line_starts[i + 1];
+        }
+
+        int line_length = line_end - line_start;
+        char line_buffer[line_length + 1];
+
+        // Copy line text out of original text buffer
+        strncpy(line_buffer, box->text + line_start, line_length);
+        line_buffer[line_length] = '\0'; // Manually null-terminate
+
+        // End current line
+        renderAlignedLine(renderer, line_buffer, base_x, text_y, max_width,
+                          max_height, box, box->char_states, line_start,
+                          line_length);
+
+        text_y += line_height;
     }
 }
 
@@ -107,7 +165,6 @@ void uiTextBoxDraw(SDL_Renderer *renderer, const UITextBox *box) {
         .x = box->x, .y = box->y, .w = box->width, .h = box->height};
 
     SDL_RenderFillRect(renderer, &bg_rect);
-    debugUIIncrementDrawCalls();
 
     // Draw text with automatic word wrapping
     if (box->text && box->text[0] != '\0') {

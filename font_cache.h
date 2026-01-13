@@ -21,6 +21,8 @@ bool fontCacheInit(SDL_Renderer *renderer, const char *font_path,
 
 GlyphCacheEntry getGlyphCacheEntry(int codepoint);
 
+GlyphCacheEntry *getGlyphCache();
+
 FontMetricsCache getFontMetricsCache();
 
 void fontCacheQuit();

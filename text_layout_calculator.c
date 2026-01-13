@@ -2,12 +2,14 @@
 #include "font_cache.h"
 #include "text_render.h"
 #include <SDL3/SDL_keycode.h>
-#include <SDL3/SDL_oldnames.h>
 #include <SDL3/SDL_pixels.h>
+#include <time.h>
 
 #define CACHE_START_CHAR 32
 #define CACHE_END_CHAR 126
 #define CACHE_SIZE 95
+
+static PrecalculatedTextLayout calculated_text_layout = {.line_count = 0};
 
 static inline int getCacheIndex(int codepoint) {
     if (codepoint >= CACHE_START_CHAR && codepoint <= CACHE_END_CHAR) {
@@ -23,8 +25,9 @@ int calculateTextLines(const char *text, int font_size, int layout_width,
         return 0;
 
     const int max_chars_per_line = layout_width / font_size;
-    if (max_chars_per_line <= 0)
+    if (max_chars_per_line <= 0) {
         return 0;
+    }
 
     int line_count = 0;
     int line_start = 0;
@@ -65,6 +68,28 @@ int calculateTextLines(const char *text, int font_size, int layout_width,
     }
 
     return line_count;
+}
+
+void calculateTextLayoutLineBreaks(char *target_text, int font_size,
+                                   int layout_width) {
+    int line_count;
+    int line_starts[MAX_LINES];
+
+    line_count =
+        calculateTextLines(target_text, font_size, layout_width, line_starts);
+
+    for (int i = 0; i < line_count; i++) {
+        SDL_Log("Line %d: %d", i, line_starts[i]);
+    }
+
+    calculated_text_layout.line_count = line_count;
+    for (int i = 0; i < line_count; i++) {
+        calculated_text_layout.line_starts[i] = line_starts[i];
+    }
+}
+
+PrecalculatedTextLayout getCalculatedTextLayout() {
+    return calculated_text_layout;
 }
 
 int calculateTextLayout(TextLayout *layout, const char *text, float max_width,

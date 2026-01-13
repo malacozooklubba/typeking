@@ -17,8 +17,15 @@ typedef struct {
     bool is_valid;   // Whether this layout is valid
 } TextLayout;
 
-int calculateTextLines(const char *text, int font_size, int layout_width,
-                       int *out_line_starts);
+typedef struct {
+    int line_starts[MAX_LINES];
+    int line_count;
+} PrecalculatedTextLayout;
 
 int calculateTextLayout(TextLayout *layout, const char *text, float max_width,
                         float font_size);
+
+void calculateTextLayoutLineBreaks(char *target_text, int font_size,
+                                   int layout_width);
+
+PrecalculatedTextLayout getCalculatedTextLayout();

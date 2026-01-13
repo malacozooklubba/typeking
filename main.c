@@ -105,8 +105,6 @@ static int caret_current_line = 0; // Track which line caret is on
 // Forward declarations
 static void calculateTypingStats(void);
 static void loadWords(int count);
-// static bool calculateTextLayout(TextLayout *layout, const char *text,
-//                                 float max_width, float font_size);
 
 static void beginTransition(GameState target) {
     state_transition.state = TRANSITION_FADE_IN;
@@ -127,8 +125,6 @@ static void performStateChange(GameState new_state) {
 
     case TYPING:
         // Load new words for this round
-        loadWords(word_count);
-
         user_input[0] = '\0';
         user_input_pos = 0;
 
@@ -412,16 +408,8 @@ static void updateCaretLerp(float delta_time) {
 void enterLobbyMode(void) { beginTransition(LOBBY); }
 
 void enterTypingMode() {
-    // Calculate text box layout
-    int *user_input_line_starts = malloc(sizeof(int) * MAX_LINES);
-    int lineCount;
-
-    lineCount = calculateTextLines(target_text, FONT_SIZE, window_width,
-                                   user_input_line_starts);
-
-    for (int i = 0; i < lineCount; i++) {
-        SDL_Log("Line %d: %d", i, user_input_line_starts[i]);
-    }
+    loadWords(word_count);
+    calculateTextLayoutLineBreaks(target_text, FONT_SIZE, window_width);
 
     beginTransition(TYPING);
 }
@@ -614,7 +602,8 @@ void renderTypingGameState() {
     box1.caret_position = user_input_pos;
     box1.caret_visual_x_offset = caret_visual_x;
 
-    uiTextBoxDraw(renderer, &box1);
+    // uiTextBoxDraw(renderer, &box1);
+    drawPrecalculatedTextLayout(renderer, &box1);
 }
 
 void renderResultsGameState() {
@@ -743,7 +732,6 @@ static void loadWords(int count) {
 SDL_AppResult SDL_AppInit(__attribute__((unused)) void **appstate,
                           __attribute__((unused)) int argc,
                           __attribute__((unused)) char *argv[]) {
-
     SDL_SetAppMetadata(game_name, "1.0", "com.palm.treetyper");
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -765,7 +753,6 @@ SDL_AppResult SDL_AppInit(__attribute__((unused)) void **appstate,
         return SDL_APP_FAILURE;
     }
 
-    loadWords(word_count);
     debugUIInit();
 
     // Initialize typing stats performance frequency
@@ -780,7 +767,6 @@ SDL_AppResult SDL_AppInit(__attribute__((unused)) void **appstate,
 
 SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
                            SDL_Event *event) {
-
     if (event->type == SDL_EVENT_QUIT) {
         return SDL_APP_SUCCESS;
     }
@@ -909,9 +895,6 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
     // Update caret lerp animation
     updateCaretLerp(delta_time);
-
-    // Reset draw calls at the start of each frame
-    debugUIResetDrawCalls();
 
     /* ==== Render Loop ==== */
     SDL_SetRenderDrawColor(renderer, THEME_BACKGROUND.r, THEME_BACKGROUND.g,

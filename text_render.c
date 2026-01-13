@@ -1,5 +1,4 @@
 #include "text_render.h"
-#include "debug_ui.h"
 #include "font_cache.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_render.h>
@@ -27,7 +26,6 @@ void textRenderDraw(SDL_Renderer *renderer, const char *text, float x, float y,
                              (float)glyph.width, (float)glyph.height};
 
             SDL_RenderTexture(renderer, glyph.texture, NULL, &dst);
-            debugUIIncrementDrawCalls();
         }
 
         x_pos += glyph.advance;

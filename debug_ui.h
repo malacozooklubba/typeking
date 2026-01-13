@@ -9,12 +9,6 @@ void debugUIInit(void);
 // Update frame timing (call once per frame)
 void debugUIUpdateFrame(void);
 
-// Increment draw call counter
-void debugUIIncrementDrawCalls(void);
-
-// Reset draw call counter (call at start of frame)
-void debugUIResetDrawCalls(void);
-
 // Draw the debug UI overlay
 void debugUIDraw(SDL_Renderer *renderer, int window_width, int window_height);
 

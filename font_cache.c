@@ -92,6 +92,8 @@ GlyphCacheEntry getGlyphCacheEntry(int codepoint) {
     return glyph_cache[getCacheIndex(codepoint)];
 }
 
+GlyphCacheEntry *getGlyphCache() { return glyph_cache; }
+
 FontMetricsCache getFontMetricsCache() { return cached_metrics; }
 
 bool fontCacheInit(SDL_Renderer *renderer, const char *font_path,

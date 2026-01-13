@@ -29,7 +29,8 @@ typedef struct {
     float font_size;
     UITextAlign align;
     int caret_position;          // Character position for caret (-1 to disable)
-    float caret_visual_x_offset; // Visual X offset for lerp (relative to text start)
+    float caret_visual_x_offset; // Visual X offset for lerp (relative to text
+                                 // start)
 } UITextBox;
 
 // Initialize a text box with default values
@@ -37,3 +38,5 @@ UITextBox uiTextBoxCreate(float x, float y, float width, float height);
 
 // Draw a text box with background, border, padding, and multi-line text
 void uiTextBoxDraw(SDL_Renderer *renderer, const UITextBox *box);
+
+void drawPrecalculatedTextLayout(SDL_Renderer *renderer, const UITextBox *box);
