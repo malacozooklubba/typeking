@@ -4,6 +4,7 @@
 #include "text_render.h"
 #include "theme.h"
 #include "ui.h"
+#include <SDL3/SDL_filesystem.h>
 #include <SDL3/SDL_keycode.h>
 #include <SDL3/SDL_oldnames.h>
 #include <SDL3/SDL_pixels.h>
@@ -590,8 +591,6 @@ void renderResultsGameState() {
     uiTextBoxDraw(renderer, &exit_box);
 }
 
-void addWord(char *word) {}
-
 static void loadWords(int count) {
     // Clamp count to valid range
     if (count < 1)
@@ -599,9 +598,13 @@ static void loadWords(int count) {
     if (count > MAX_WORD_COUNT)
         count = MAX_WORD_COUNT;
 
+    const char *basePath = SDL_GetBasePath();
+    char path[1024];
+    snprintf(path, sizeof(path), "%s/words/oxford_3000.txt", basePath);
+
     target_text[0] = '\0'; // Initialize empty string
 
-    FILE *file = fopen("words/oxford_3000.txt", "r");
+    FILE *file = fopen(path, "r");
 
     if (file == NULL) {
         SDL_Log("Could not open words file");
@@ -684,8 +687,11 @@ SDL_AppResult SDL_AppInit(__attribute__((unused)) void **appstate,
         return SDL_APP_FAILURE;
     }
 
-    if (!fontCacheInit(renderer, "./bin/font/JetBrainsMono-Regular.ttf",
-                       FONT_SIZE)) {
+    const char *basePath = SDL_GetBasePath();
+    char path[1024];
+    snprintf(path, sizeof(path), "%s/font/JetBrainsMono-Regular.ttf", basePath);
+
+    if (!fontCacheInit(renderer, path, FONT_SIZE)) {
         SDL_Log("Failed to initialize text rendering");
         return SDL_APP_FAILURE;
     }
@@ -701,8 +707,6 @@ SDL_AppResult SDL_AppInit(__attribute__((unused)) void **appstate,
         SDL_Log("Could not get display refresh rate, defaulting to 60 Hz");
         target_frame_time_ms = 16.666f;
     }
-
-    // debugUIInit();
 
     // Initialize typing stats performance frequency
     typing_stats.performance_frequency = SDL_GetPerformanceFrequency();
