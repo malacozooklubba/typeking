@@ -1,5 +1,5 @@
-#include "debug_ui.h"
 #include "font_cache.h"
+#include "fps_counter.h"
 #include "text_layout_calculator.h"
 #include "text_render.h"
 #include "theme.h"
@@ -68,6 +68,7 @@ typedef struct {
 } TypingStats;
 
 const char game_name[] = "Type King";
+const float window_padding = 50.0f;
 
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
@@ -84,12 +85,21 @@ static TypingStats typing_stats = {0};
 static int word_count = MODE_SHORT;
 static bool position_had_error[MAX_WORD_LENGTH * MAX_WORD_COUNT] = {false};
 
-// Precalculated text layouts
-static TextLayout target_text_layout = {0};
-static TextLayout user_input_layout = {0};
+// Precalculated text layouts (not used anymore - using simpler
+// PrecalculatedTextLayout)
+static PrecalculatedTextLayout user_input_layout = {0};
 
 // Animation timing
 static Uint64 last_frame_time = 0;
+
+// Frame rate limiting
+static float target_frame_time_ms = 16.666f; // Default to 60Hz
+static Uint64 frame_start_time = 0;
+
+// Dictionary for word loading
+#define MAX_DICTIONARY_WORDS 5000
+static char *dictionary[MAX_DICTIONARY_WORDS] = {NULL};
+static int dictionary_loaded = 0;
 
 // State transition animation
 static StateTransition state_transition = {
@@ -102,9 +112,14 @@ static float caret_visual_x = 0.0f;
 static float caret_target_x = 0.0f;
 static int caret_current_line = 0; // Track which line caret is on
 
+// Reusable buffers to avoid stack allocation every frame
+static unsigned char char_states_buffer[MAX_WORD_LENGTH * MAX_WORD_COUNT];
+static char display_text_buffer[MAX_WORD_LENGTH * MAX_WORD_COUNT];
+
 // Forward declarations
 static void calculateTypingStats(void);
 static void loadWords(int count);
+static void freeDictionary(void);
 
 static void beginTransition(GameState target) {
     state_transition.state = TRANSITION_FADE_IN;
@@ -115,8 +130,6 @@ static void beginTransition(GameState target) {
 static void performStateChange(GameState new_state) {
     GameState old_state = game_state;
     game_state = new_state;
-
-    SDL_Log("State change: %d -> %d", old_state, new_state);
 
     switch (new_state) {
     case LOBBY:
@@ -152,13 +165,9 @@ static void performStateChange(GameState new_state) {
         caret_target_x = 0.0f;
         caret_current_line = 0;
 
-        // Calculate text layouts
-        const float window_padding = 50.0f;
-        float text_max_width = window_width - window_padding * 2;
-        calculateTextLayout(&target_text_layout, target_text, text_max_width,
-                            FONT_SIZE);
-        calculateTextLayout(&user_input_layout, user_input, text_max_width,
-                            FONT_SIZE);
+        // Initialize empty user input layout
+        user_input_layout.line_count = 1;
+        user_input_layout.line_starts[0] = 0;
 
         SDL_StartTextInput(window);
         break;
@@ -227,116 +236,40 @@ static void renderTransitionOverlay(SDL_Renderer *renderer,
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
 }
 
-// Calculate line breaks for text with word wrapping
-// static bool calculateTextLayout(TextLayout *layout, const char *text,
-//                                 float max_width, float font_size) {
-//     // Initialize layout
-//     layout->line_count = 0;
-//     layout->max_width = max_width;
-//     layout->font_size = font_size;
-//     layout->is_valid = true;
-//
-//     // Handle empty text
-//     if (!text || text[0] == '\0') {
-//         return true;
-//     }
-//
-//     // Measure space width once
-//     float space_width;
-//     textRenderMeasure(" ", font_size, &space_width, NULL);
-//
-//     int line_start = 0;
-//     int line_length = 0;
-//     float current_line_width = 0.0f;
-//
-//     const char *word_start = text;
-//     const char *p = text;
-//
-//     while (*p) {
-//         // Word boundary detection (EXACT same as ui.c line 157)
-//         if (*p == ' ' || *(p + 1) == '\0') {
-//             int word_len = (p - word_start + 1);
-//
-//             if (word_len > 0 && word_len < 64) {
-//                 char word_buffer[64];
-//                 strncpy(word_buffer, word_start, word_len);
-//                 word_buffer[word_len] = '\0';
-//
-//                 float word_width;
-//                 textRenderMeasure(word_buffer, font_size, &word_width, NULL);
-//
-//                 if (line_length > 0) {
-//                     // ALWAYS add space_width (matches ui.c line 175)
-//                     float required_width =
-//                         current_line_width + word_width + space_width;
-//
-//                     if (required_width > max_width) {
-//                         // Save current line before wrapping
-//                         if (layout->line_count >= MAX_LINES) {
-//                             layout->is_valid = false;
-//                             return false;
-//                         }
-//
-//                         layout->lines[layout->line_count].start_char_index =
-//                             line_start;
-//                         layout->lines[layout->line_count].end_char_index =
-//                             line_start + line_length;
-//                         layout->lines[layout->line_count].char_count =
-//                             line_length;
-//                         layout->line_count++;
-//
-//                         // Start new line
-//                         line_start = line_start + line_length;
-//                         line_length = 0;
-//                         current_line_width = 0.0f;
-//                     }
-//                 }
-//
-//                 line_length += word_len;
-//                 current_line_width += word_width;
-//             }
-//
-//             word_start = p + 1;
-//         }
-//         p++;
-//     }
-//
-//     // Save final line
-//     if (line_length > 0 && layout->line_count < MAX_LINES) {
-//         layout->lines[layout->line_count].start_char_index = line_start;
-//         layout->lines[layout->line_count].end_char_index =
-//             line_start + line_length;
-//         layout->lines[layout->line_count].char_count = line_length;
-//         layout->line_count++;
-//     }
-//
-//     return true;
-// }
-
 // Find which line contains the caret using precalculated layout
-static int findCaretLine(int caret_pos, const TextLayout *layout,
+static int findCaretLine(int caret_pos, const PrecalculatedTextLayout *layout,
                          int *line_start_offset) {
-    if (!layout || !layout->is_valid || layout->line_count == 0) {
+    if (!layout || layout->line_count == 0) {
         *line_start_offset = 0;
         return 0;
     }
 
     // Find which line contains the caret position
+    // line_starts[i] is where line i begins
+    // line_starts[i+1] is where line i+1 begins (which is where line i ends)
     for (int i = 0; i < layout->line_count; i++) {
-        const LineBreak *line = &layout->lines[i];
+        int line_start = layout->line_starts[i];
+        int line_end;
+
+        // Last line goes to end of text
+        if (i == layout->line_count - 1) {
+            line_end =
+                999999; // Large number - caret is definitely on last line
+        } else {
+            line_end = layout->line_starts[i + 1];
+        }
 
         // Caret is on this line if position is within range
-        if (caret_pos >= line->start_char_index &&
-            caret_pos < line->end_char_index) {
-            *line_start_offset = line->start_char_index;
+        if (caret_pos >= line_start && caret_pos < line_end) {
+            *line_start_offset = line_start;
             return i;
         }
     }
 
-    // Caret is at the end (after last line)
+    // Caret is at the end (after last line) - use last line
     if (layout->line_count > 0) {
         int last_line = layout->line_count - 1;
-        *line_start_offset = layout->lines[last_line].start_char_index;
+        *line_start_offset = layout->line_starts[last_line];
         return last_line;
     }
 
@@ -360,38 +293,40 @@ static void updateCaretLerp(float delta_time) {
         return;
     }
 
-    // Find which line the caret is on using precalculated layout
+    // Use the SAME layout as rendering (target_text layout) to ensure
+    // caret X position matches the rendered line boundaries
+    PrecalculatedTextLayout text_layout = getCalculatedTextLayout();
+
+    // Find which line the caret is on using target_text layout
     int line_start_offset = 0;
     int new_line =
-        findCaretLine(user_input_pos, &user_input_layout, &line_start_offset);
+        findCaretLine(user_input_pos, &text_layout, &line_start_offset);
 
-    // Detect line change - snap immediately (no animation)
-    if (new_line != caret_current_line) {
-        caret_current_line = new_line;
-
-        // Measure text from line start to caret position
-        int chars_on_line = user_input_pos - line_start_offset;
-        char temp_text[MAX_WORD_LENGTH * MAX_WORD_COUNT];
-        strncpy(temp_text, user_input + line_start_offset, chars_on_line);
-        temp_text[chars_on_line] = '\0';
-
-        float measured_width;
-        textRenderMeasure(temp_text, FONT_SIZE, &measured_width, NULL);
-
-        // Snap instantly (no lerp)
-        caret_target_x = measured_width;
-        caret_visual_x = measured_width;
-        return;
-    }
-
-    // Same line - measure text from line start to caret position
+    // Calculate target X: measure text from line start to caret position
     int chars_on_line = user_input_pos - line_start_offset;
-    char temp_text[MAX_WORD_LENGTH * MAX_WORD_COUNT];
+
+    // Bounds check
+    if (chars_on_line < 0)
+        chars_on_line = 0;
+    if (chars_on_line > 511)
+        chars_on_line = 511;
+
+    char temp_text[512];
     strncpy(temp_text, user_input + line_start_offset, chars_on_line);
     temp_text[chars_on_line] = '\0';
 
     float measured_width;
     textRenderMeasure(temp_text, FONT_SIZE, &measured_width, NULL);
+
+    // Detect line change - snap immediately (no animation)
+    if (new_line != caret_current_line) {
+        caret_current_line = new_line;
+        caret_target_x = measured_width;
+        caret_visual_x = measured_width; // Snap instantly
+        return;
+    }
+
+    // Same line - update target
     caret_target_x = measured_width;
 
     // Exponential lerp toward target (smooth animation within line)
@@ -409,8 +344,8 @@ void enterLobbyMode(void) { beginTransition(LOBBY); }
 
 void enterTypingMode() {
     loadWords(word_count);
-    calculateTextLayoutLineBreaks(target_text, FONT_SIZE, window_width);
-
+    calculateTextLayoutLineBreaks(target_text, FONT_SIZE,
+                                  window_width - window_padding * 2);
     beginTransition(TYPING);
 }
 
@@ -527,15 +462,14 @@ static void calculateTypingStats() {
     }
 
     // Count correct characters using existing comparison logic
-    unsigned char char_states[MAX_WORD_LENGTH * MAX_WORD_COUNT];
-    compareInputToTarget(target_text, user_input, char_states,
-                         sizeof(char_states));
+    compareInputToTarget(target_text, user_input, char_states_buffer,
+                         sizeof(char_states_buffer));
 
     typing_stats.correct_chars = 0;
     // NOTE: error_chars is already tracked in real-time, don't recalculate
     int target_len = strlen(target_text);
     for (int i = 0; i < target_len; i++) {
-        if (char_states[i] == CHAR_STATE_CORRECT) {
+        if (char_states_buffer[i] == CHAR_STATE_CORRECT) {
             typing_stats.correct_chars++;
         }
     }
@@ -569,40 +503,35 @@ static void calculateTypingStats() {
 }
 
 void renderTypingGameState() {
-    const float window_padding = 50.0f;
-
     // Create state array and compare input to target
-    unsigned char char_states[MAX_WORD_LENGTH * MAX_WORD_COUNT];
-    compareInputToTarget(target_text, user_input, char_states,
-                         sizeof(char_states));
+    compareInputToTarget(target_text, user_input, char_states_buffer,
+                         sizeof(char_states_buffer));
 
     // Build display text: user input + remaining target text
-    static char display_text[MAX_WORD_LENGTH * MAX_WORD_COUNT];
     int input_len = strlen(user_input);
     int target_len = strlen(target_text);
 
     // Copy user input
-    strncpy(display_text, user_input, input_len);
+    strncpy(display_text_buffer, user_input, input_len);
 
     // Append remaining target text
     if (input_len < target_len) {
-        strcpy(display_text + input_len, target_text + input_len);
+        strcpy(display_text_buffer + input_len, target_text + input_len);
     } else {
-        display_text[input_len] = '\0';
+        display_text_buffer[input_len] = '\0';
     }
 
     UITextBox box1 = uiTextBoxCreate(window_padding, 50.0f,
                                      window_width - window_padding * 2, 150.0f);
 
-    box1.text = display_text;
-    box1.char_states = char_states;
+    box1.text = display_text_buffer;
+    box1.char_states = char_states_buffer;
     box1.align = UI_ALIGN_START;
     box1.text_color = THEME_TEXT_UNTYPED;
     box1.bg_color = THEME_BACKGROUND;
     box1.caret_position = user_input_pos;
     box1.caret_visual_x_offset = caret_visual_x;
 
-    // uiTextBoxDraw(renderer, &box1);
     drawPrecalculatedTextLayout(renderer, &box1);
 }
 
@@ -682,51 +611,59 @@ static void loadWords(int count) {
     // Seed random number generator
     srand(time(NULL));
 
-    int total_lines = 0;
-    char buffer[64];
-    int current_line = 0;
-
-    while (fgets(buffer, sizeof(buffer), file)) {
-        total_lines++;
-    }
-
-    SDL_Log("Loading %d words from %d total lines", count, total_lines);
-
-    int random_line_indices[MAX_WORD_COUNT];
-    for (int i = 0; i < count; i++) {
-        random_line_indices[i] = rand() % total_lines;
-    }
-
-    // TODO: Sort random_line_indices so this can be done in a single pass
-    // Then randomize the order of the lines (words) before going into typing
-    for (int i = 0; i < count; i++) {
-        rewind(file);
-        int current_line = 0;
-
-        while (current_line < random_line_indices[i] &&
-               fgets(buffer, sizeof(buffer), file)) {
-            current_line++;
-        }
-
-        // Read the target line
-        if (fgets(buffer, sizeof(buffer), file)) {
+    // Read all lines into memory (efficient single-pass approach)
+    if (dictionary_loaded == 0) {
+        char buffer[64];
+        while (fgets(buffer, sizeof(buffer), file) &&
+               dictionary_loaded < MAX_DICTIONARY_WORDS) {
             // Remove trailing newline if present
             size_t len = strlen(buffer);
             if (len > 0 && buffer[len - 1] == '\n') {
                 buffer[len - 1] = '\0';
+                len--;
             }
 
-            // Append to output buffer
-            if (i > 0) {
-                strcat(target_text, " "); // Add space separator
+            // Allocate and store word
+            if (len > 0) {
+                dictionary[dictionary_loaded] = malloc(len + 1);
+                if (dictionary[dictionary_loaded]) {
+                    strcpy(dictionary[dictionary_loaded], buffer);
+                    dictionary_loaded++;
+                }
             }
-            strcat(target_text, buffer);
         }
+        SDL_Log("Loaded %d words into dictionary", dictionary_loaded);
     }
 
-    printf("%s\n", target_text);
-
     fclose(file);
+
+    if (dictionary_loaded == 0) {
+        SDL_Log("No words loaded from file");
+        return;
+    }
+
+    // Pick random words from dictionary
+    for (int i = 0; i < count; i++) {
+        int random_index = rand() % dictionary_loaded;
+
+        // Append to output buffer
+        if (i > 0) {
+            strcat(target_text, " "); // Add space separator
+        }
+        strcat(target_text, dictionary[random_index]);
+    }
+
+    SDL_Log("Selected %d words: %s", count, target_text);
+}
+
+static void freeDictionary(void) {
+    for (int i = 0; i < dictionary_loaded; i++) {
+        if (dictionary[i]) {
+            free(dictionary[i]);
+            dictionary[i] = NULL;
+        }
+    }
+    dictionary_loaded = 0;
 }
 
 SDL_AppResult SDL_AppInit(__attribute__((unused)) void **appstate,
@@ -753,14 +690,24 @@ SDL_AppResult SDL_AppInit(__attribute__((unused)) void **appstate,
         return SDL_APP_FAILURE;
     }
 
-    debugUIInit();
+    // Get display refresh rate and set target frame time
+    SDL_DisplayID display_id = SDL_GetPrimaryDisplay();
+    const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(display_id);
+
+    if (mode && mode->refresh_rate > 0) {
+        target_frame_time_ms = 1000.0f / mode->refresh_rate;
+        SDL_Log("Display refresh rate: %.2f Hz ", mode->refresh_rate);
+    } else {
+        SDL_Log("Could not get display refresh rate, defaulting to 60 Hz");
+        target_frame_time_ms = 16.666f;
+    }
+
+    // debugUIInit();
 
     // Initialize typing stats performance frequency
     typing_stats.performance_frequency = SDL_GetPerformanceFrequency();
 
     enterLobbyMode();
-
-    SDL_Log("Press F3 to toggle debug UI");
 
     return SDL_APP_CONTINUE;
 }
@@ -775,12 +722,15 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
 
         // Recalculate layouts if in typing mode
         if (game_state == TYPING) {
-            const float window_padding = 50.0f;
-            float text_max_width = window_width - window_padding * 2;
-            calculateTextLayout(&target_text_layout, target_text,
-                                text_max_width, FONT_SIZE);
-            calculateTextLayout(&user_input_layout, user_input, text_max_width,
-                                FONT_SIZE);
+            // Recalculate target text layout
+            calculateTextLayoutLineBreaks(target_text, FONT_SIZE,
+                                          window_width - window_padding * 2);
+
+            // Recalculate user input layout
+            const float text_max_width = window_width - window_padding * 2;
+            user_input_layout.line_count =
+                calculateTextLines(user_input, FONT_SIZE, text_max_width,
+                                   user_input_layout.line_starts);
         }
     }
     if (event->type == SDL_EVENT_KEY_DOWN) {
@@ -816,20 +766,23 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
                     user_input[user_input_pos] = '\0';
 
                     // Recalculate layout
-                    const float window_padding = 50.0f;
-                    float text_max_width = window_width - window_padding * 2;
-                    calculateTextLayout(&user_input_layout, user_input,
-                                        text_max_width, FONT_SIZE);
+                    const float text_max_width =
+                        window_width - window_padding * 2;
+                    user_input_layout.line_count = calculateTextLines(
+                        user_input, FONT_SIZE, text_max_width,
+                        user_input_layout.line_starts);
                 }
+            } else if (event->key.key == SDLK_ESCAPE) {
+                enterLobbyMode();
             }
         }
 
         if (event->type == SDL_EVENT_TEXT_INPUT) {
+
             // Start timer on first character typed
             if (!typing_stats.timer_started) {
                 typing_stats.start_time = SDL_GetPerformanceCounter();
                 typing_stats.timer_started = true;
-                SDL_Log("Timer started");
             }
 
             // Add text in event to input buffer
@@ -842,10 +795,10 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
                 user_input[user_input_pos] = '\0';
 
                 // Recalculate layout
-                const float window_padding = 50.0f;
-                float text_max_width = window_width - window_padding * 2;
-                calculateTextLayout(&user_input_layout, user_input,
-                                    text_max_width, FONT_SIZE);
+                const float text_max_width = window_width - window_padding * 2;
+                user_input_layout.line_count =
+                    calculateTextLines(user_input, FONT_SIZE, text_max_width,
+                                       user_input_layout.line_starts);
 
                 // Check if this is an error and hasn't been counted yet
                 if (current_pos < strlen(target_text)) {
@@ -853,8 +806,6 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
                         !position_had_error[current_pos]) {
                         typing_stats.error_chars++;
                         position_had_error[current_pos] = true;
-                        SDL_Log("Error at position %d (total errors: %d)",
-                                current_pos, typing_stats.error_chars);
                     }
                 }
 
@@ -880,8 +831,11 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
 }
 
 SDL_AppResult SDL_AppIterate(void *appstate) {
+    // Record frame start time for frame rate limiting
+    frame_start_time = SDL_GetPerformanceCounter();
+
     // Calculate delta time for animations
-    Uint64 current_time = SDL_GetPerformanceCounter();
+    Uint64 current_time = frame_start_time;
     float delta_time = 0.0f;
 
     if (last_frame_time != 0) {
@@ -919,15 +873,21 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
     // Draw debug UI (if enabled)
     if (debug_info) {
-        debugUIDraw(renderer, window_width, window_height);
+        drawFps(renderer);
     }
 
     SDL_RenderPresent(renderer);
     /* ===================== */
 
-    // Update frame timing at the end of frame
-    if (debug_info) {
-        debugUIUpdateFrame();
+    // Frame rate limiting: sleep if frame finished too quickly
+    Uint64 frame_end_time = SDL_GetPerformanceCounter();
+    Uint64 frame_ticks = frame_end_time - frame_start_time;
+    float frame_time_ms =
+        (frame_ticks * 1000.0f) / SDL_GetPerformanceFrequency();
+
+    if (frame_time_ms < target_frame_time_ms) {
+        float sleep_time_ms = target_frame_time_ms - frame_time_ms;
+        SDL_Delay((Uint32)sleep_time_ms);
     }
 
     return SDL_APP_CONTINUE;
@@ -935,6 +895,6 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
 void SDL_AppQuit(__attribute__((unused)) void *appstate,
                  __attribute__((unused)) SDL_AppResult result) {
-    debugUIQuit();
+    freeDictionary();
     fontCacheQuit();
 }

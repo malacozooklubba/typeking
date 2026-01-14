@@ -66,8 +66,15 @@ static inline void renderAlignedLine(SDL_Renderer *renderer,
         calculateAlignedY(base_y, max_height, line_height, box->align);
 
     if (char_states != NULL) {
-        typedTextRenderDraw(renderer, line_buffer, text_x, text_y,
-                            box->font_size, char_states + char_offset);
+        // Validate char_offset is reasonable (prevent out-of-bounds access)
+        if (char_offset >= 0 && char_offset <= 3200) {
+            typedTextRenderDraw(renderer, line_buffer, text_x, text_y,
+                                box->font_size, char_states + char_offset);
+        } else {
+            // Render without char states if offset is invalid
+            textRenderDraw(renderer, line_buffer, text_x, text_y, getGlyphCache(),
+                           getFontMetricsCache(), box->text_color);
+        }
     } else {
         textRenderDraw(renderer, line_buffer, text_x, text_y, getGlyphCache(),
                        getFontMetricsCache(), box->text_color);
@@ -109,7 +116,7 @@ void drawPrecalculatedTextLayout(SDL_Renderer *renderer, const UITextBox *box) {
 
     SDL_RenderFillRect(renderer, &bg_rect);
 
-    if (!box->text && box->text[0] == '\0') {
+    if (!box->text || box->text[0] == '\0') {
         return;
     }
 
@@ -125,11 +132,25 @@ void drawPrecalculatedTextLayout(SDL_Renderer *renderer, const UITextBox *box) {
     int line_count = 0;
     PrecalculatedTextLayout text_layout = getCalculatedTextLayout();
 
+    if (text_layout.line_count <= 0) {
+        uiTextBoxDraw(renderer, box);
+        return;
+    }
+
     const char *word_start = box->text;
     const char *p = box->text;
 
+    int text_len = strlen(box->text);
+
     for (int i = 0; i < text_layout.line_count; i++) {
         int line_start = text_layout.line_starts[i];
+
+        // Validate line_start is within text bounds
+        if (line_start < 0 || line_start > text_len) {
+            SDL_Log("Invalid line_start %d at line %d (text_len=%d)",
+                    line_start, i, text_len);
+            continue;
+        }
         int line_end;
 
         // For the last line, go to end of text; otherwise use next line's start
@@ -140,6 +161,12 @@ void drawPrecalculatedTextLayout(SDL_Renderer *renderer, const UITextBox *box) {
         }
 
         int line_length = line_end - line_start;
+
+        // Bounds checking to prevent VLA overflow/underflow
+        if (line_length < 0 || line_length > 2048) {
+            continue;
+        }
+
         char line_buffer[line_length + 1];
 
         // Copy line text out of original text buffer

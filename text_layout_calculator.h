@@ -25,6 +25,9 @@ typedef struct {
 int calculateTextLayout(TextLayout *layout, const char *text, float max_width,
                         float font_size);
 
+int calculateTextLines(const char *text, int font_size, int layout_width,
+                       int *out_line_starts);
+
 void calculateTextLayoutLineBreaks(char *target_text, int font_size,
                                    int layout_width);
 

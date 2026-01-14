@@ -2,6 +2,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_render.h>
 #include <SDL3/SDL_surface.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -96,6 +97,12 @@ GlyphCacheEntry *getGlyphCache() { return glyph_cache; }
 
 FontMetricsCache getFontMetricsCache() { return cached_metrics; }
 
+float fontCacheGetKerning(int codepoint1, int codepoint2) {
+    float scale = stbtt_ScaleForPixelHeight(&font, cached_font_size);
+    int kern = stbtt_GetCodepointKernAdvance(&font, codepoint1, codepoint2);
+    return kern * scale;
+}
+
 bool fontCacheInit(SDL_Renderer *renderer, const char *font_path,
                    float font_size) {
     if (!renderer || !font_path || font_size <= 0) {
@@ -176,7 +183,7 @@ bool fontCacheInit(SDL_Renderer *renderer, const char *font_path,
                 glyph_cache[idx].height = height;
                 glyph_cache[idx].xoff = xoff;
                 glyph_cache[idx].yoff = yoff;
-                glyph_cache[idx].advance = advance;
+                glyph_cache[idx].advance = roundf(advance * scale);  // Scale and round to pixels
                 cached_count++;
             }
             stbtt_FreeBitmap(bitmap, NULL);
@@ -189,7 +196,7 @@ bool fontCacheInit(SDL_Renderer *renderer, const char *font_path,
             glyph_cache[idx].height = 0;
             glyph_cache[idx].xoff = 0;
             glyph_cache[idx].yoff = 0;
-            glyph_cache[idx].advance = advance;
+            glyph_cache[idx].advance = roundf(advance * scale);  // Scale and round to pixels
             cached_count++;
         }
     }

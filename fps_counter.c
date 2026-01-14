@@ -23,6 +23,7 @@ void drawFps(SDL_Renderer *renderer) {
 
     // 5 digits for fps is enough, surely
     char fpsText[6];
+    fpsText[5] = '\0';
 
     SDL_itoa(fps, fpsText, 10);
 

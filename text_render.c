@@ -1,5 +1,6 @@
 #include "text_render.h"
 #include "font_cache.h"
+#include "theme.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_render.h>
 #include <SDL3/SDL_surface.h>
@@ -13,8 +14,14 @@ void textRenderDraw(SDL_Renderer *renderer, const char *text, float x, float y,
     float x_pos = x;
 
     for (const char *p = text; *p; p++) {
-        GlyphCacheEntry glyph = glyph_cache[*p];
-        int codepoint = (int)(*p);
+        int codepoint = (unsigned char)(*p);
+
+        // Bounds check for glyph cache (32-126)
+        if (codepoint < 32 || codepoint > 126) {
+            continue;
+        }
+
+        GlyphCacheEntry glyph = glyph_cache[codepoint - 32];
         SDL_Color glyph_color = color;
 
         // Render the glyph if it has a texture (spaces don't)
@@ -32,7 +39,9 @@ void textRenderDraw(SDL_Renderer *renderer, const char *text, float x, float y,
 
         // Apply kerning if next character exists
         if (*(p + 1)) {
-            x_pos += glyph.kerning;
+            int codepoint1 = (int)(*p);
+            int codepoint2 = (int)(*(p + 1));
+            x_pos += fontCacheGetKerning(codepoint1, codepoint2);
         }
     }
 }
@@ -40,179 +49,121 @@ void textRenderDraw(SDL_Renderer *renderer, const char *text, float x, float y,
 void typedTextRenderDraw(SDL_Renderer *renderer, const char *text, float x,
                          float y, float font_size,
                          const unsigned char *char_states) {
+    GlyphCacheEntry *glyph_cache = getGlyphCache();
+    FontMetricsCache metrics = getFontMetricsCache();
 
-    // int a, d, lg;
-    // stbtt_GetFontVMetrics(&font, &a, &d, &lg);
+    float baseline = y + metrics.ascent;
+    float x_pos = x;
 
-    // float scale = stbtt_ScaleForPixelHeight(&font, font_size);
-    // float ascent = a * scale;
-    // float size = font_size / cached_font_size;
-    // float baseline = y + ascent;
-    // float x_pos = x;
+    int char_index = 0;
+    for (const char *p = text; *p; p++) {
+        int codepoint = (unsigned char)(*p);
 
-    // int char_index = 0;
-    // for (const char *p = text; *p; p++) {
-    //     int codepoint = (int)(*p);
-    //     int cache_idx = getCacheIndex(codepoint);
-    //     SDL_Color glyph_color = {0x00, 0x00, 0x00, 0x00};
+        // Bounds check for glyph cache (32-126)
+        if (codepoint < 32 || codepoint > 126) {
+            char_index++;
+            continue;
+        }
 
-    //     switch (char_states[char_index]) {
-    //     case 1:
-    //         glyph_color = THEME_TEXT_TYPED;
-    //         break;
-    //     case 2:
-    //         glyph_color = THEME_TEXT_ERROR;
-    //         break;
-    //     default:
-    //         glyph_color = THEME_TEXT_UNTYPED;
-    //         break;
-    //     }
+        GlyphCacheEntry glyph = glyph_cache[codepoint - 32];  // CACHE_START_CHAR is 32
+        SDL_Color glyph_color = {0x00, 0x00, 0x00, 0x00};
 
-    //     if (cache_idx >= 0) {
-    //         GlyphCacheEntry *entry = &glyph_cache[cache_idx];
+        switch (char_states[char_index]) {
+        case 1:
+            glyph_color = THEME_TEXT_TYPED;
+            break;
+        case 2:
+            glyph_color = THEME_TEXT_ERROR;
+            break;
+        default:
+            glyph_color = THEME_TEXT_UNTYPED;
+            break;
+        }
 
-    //         // Render the glyph if it has a texture (spaces don't)
-    //         if (entry->texture != NULL) {
-    //             SDL_SetTextureColorMod(entry->texture, glyph_color.r,
-    //                                    glyph_color.g, glyph_color.b);
+        // Render the glyph if it has a texture (spaces don't)
+        if (glyph.texture != NULL) {
+            SDL_SetTextureColorMod(glyph.texture, glyph_color.r,
+                                   glyph_color.g, glyph_color.b);
 
-    //             SDL_FRect dst = {
-    //                 x_pos + entry->xoff * size, baseline + entry->yoff *
-    //                 size, (float)entry->width * size, (float)entry->height *
-    //                 size};
+            SDL_FRect dst = {
+                x_pos + glyph.xoff, baseline + glyph.yoff,
+                (float)glyph.width, (float)glyph.height};
 
-    //             SDL_RenderTexture(renderer, entry->texture, NULL, &dst);
-    //             debugUIIncrementDrawCalls();
-    //         }
+            SDL_RenderTexture(renderer, glyph.texture, NULL, &dst);
+        }
 
-    //         x_pos += entry->advance * scale;
+        x_pos += glyph.advance;
 
-    //         // Apply kerning if next character exists
-    //         if (*(p + 1)) {
-    //             int kern = stbtt_GetCodepointKernAdvance(&font, codepoint,
-    //                                                      (int)(*(p + 1)));
-    //             if (kern != 0) { // Only apply if non-zero
-    //                 x_pos += kern * scale;
-    //             }
-    //         }
-    //     }
+        // Apply kerning if next character exists
+        if (*(p + 1)) {
+            int codepoint2 = (unsigned char)(*(p + 1));
+            if (codepoint2 >= 32 && codepoint2 <= 126) {
+                x_pos += fontCacheGetKerning(codepoint, codepoint2);
+            }
+        }
 
-    //     char_index++;
-    // }
+        char_index++;
+    }
 }
 
 void textRenderMeasure(const char *text, float font_size, float *width,
                        float *height) {
-    // float scale = stbtt_ScaleForPixelHeight(&font, font_size);
+    if (width) {
+        *width = textRenderMeasureVisibleWidth(text, font_size);
+    }
 
-    // if (width) {
-    //     float total_width = 0;
-    //     for (const char *p = text; *p; p++) {
-    //         int codepoint = (int)(*p);
-    //         int cache_idx = getCacheIndex(codepoint);
-
-    //         // Use cached advance if available
-    //         if (cache_idx >= 0) {
-    //             total_width += glyph_cache[cache_idx].advance * scale;
-    //         } else {
-    //             int advance, lsb;
-    //             stbtt_GetCodepointHMetrics(&font, codepoint, &advance, &lsb);
-    //             total_width += advance * scale;
-    //         }
-
-    //         if (*(p + 1)) {
-    //             int kern = stbtt_GetCodepointKernAdvance(&font, codepoint,
-    //                                                      (int)(*(p + 1)));
-    //             if (kern != 0) { // Only apply if non-zero
-    //                 total_width += kern * scale;
-    //             }
-    //         }
-    //     }
-    //     *width = total_width;
-    // }
-
-    // if (height) {
-    //     if (font_size == cached_font_size) {
-    //         *height = cached_metrics.ascent - cached_metrics.descent;
-    //     } else {
-    //         int ascent, descent, line_gap;
-    //         stbtt_GetFontVMetrics(&font, &ascent, &descent, &line_gap);
-    //         *height = (ascent - descent) * scale;
-    //     }
-    // }
+    if (height) {
+        FontMetricsCache metrics = getFontMetricsCache();
+        *height = metrics.ascent - metrics.descent;
+    }
 }
 
 float textRenderMeasureVisibleWidth(const char *text, float font_size) {
-    // if (!text || !text[0]) {
-    //     return 0.0f;
-    // }
+    if (!text || !text[0]) {
+        return 0.0f;
+    }
 
-    // // Use cached metrics if using the cached font size
-    // float scale = stbtt_ScaleForPixelHeight(&font, font_size);
+    GlyphCacheEntry *glyph_cache = getGlyphCache();
+    float total_width = 0.0f;
+    const char *p = text;
 
-    float total_width = 0;
-    // const char *p = text;
+    for (; *p; p++) {
+        int codepoint = (unsigned char)(*p);  // Use unsigned to avoid negative values
 
-    // for (; *p; p++) {
-    //     int codepoint = (int)(*p);
-    //     int cache_idx = getCacheIndex(codepoint);
+        // Bounds check for glyph cache (32-126)
+        if (codepoint < 32 || codepoint > 126) {
+            continue;
+        }
 
-    //     // Use cached advance if available
-    //     if (cache_idx >= 0) {
-    //         total_width += glyph_cache[cache_idx].advance * scale;
-    //     } else {
-    //         int advance, lsb;
-    //         stbtt_GetCodepointHMetrics(&font, codepoint, &advance, &lsb);
-    //         total_width += advance * scale;
-    //     }
+        GlyphCacheEntry glyph = glyph_cache[codepoint - 32];  // CACHE_START_CHAR is 32
+        total_width += glyph.advance;
 
-    //     if (*(p + 1)) {
-    //         int kern = stbtt_GetCodepointKernAdvance(&font, codepoint,
-    //                                                  (int)(*(p + 1)));
-    //         if (kern != 0) { // Only apply if non-zero
-    //             total_width += kern * scale;
-    //         }
-    //     }
-    // }
+        // Add kerning for consecutive characters
+        if (*(p + 1)) {
+            int codepoint2 = (unsigned char)(*(p + 1));
+            if (codepoint2 >= 32 && codepoint2 <= 126) {
+                total_width += fontCacheGetKerning(codepoint, codepoint2);
+            }
+        }
+    }
 
     return total_width;
 }
 
 void textRenderGetMetrics(float font_size, float *ascent, float *descent,
                           float *line_gap) {
-    // Use cached metrics if using the cached font size
-    // if (font_size == cached_font_size) {
-    //     if (ascent)
-    //         *ascent = cached_metrics.ascent;
-    //     if (descent)
-    //         *descent = cached_metrics.descent;
-    //     if (line_gap)
-    //         *line_gap = cached_metrics.line_gap;
-    // } else {
-    //     float scale = stbtt_ScaleForPixelHeight(&font, font_size);
-    //     int a, d, lg;
-    //     stbtt_GetFontVMetrics(&font, &a, &d, &lg);
+    // Get cached metrics
+    FontMetricsCache metrics = getFontMetricsCache();
 
-    //     if (ascent)
-    //         *ascent = a * scale;
-    //     if (descent)
-    //         *descent = d * scale;
-    //     if (line_gap)
-    //         *line_gap = lg * scale;
-    // }
+    if (ascent)
+        *ascent = metrics.ascent;
+    if (descent)
+        *descent = metrics.descent;
+    if (line_gap)
+        *line_gap = metrics.line_gap;
 }
 
 float textRenderGetLineHeight(float font_size) {
-    // Use cached metrics if using the cached font size
-    // if (font_size == cached_font_size) {
-    //     return cached_metrics.ascent - cached_metrics.descent +
-    //            cached_metrics.line_gap;
-    // } else {
-    //     float scale = stbtt_ScaleForPixelHeight(&font, font_size);
-    //     int ascent, descent, line_gap;
-    //     stbtt_GetFontVMetrics(&font, &ascent, &descent, &line_gap);
-    //     return (ascent - descent + line_gap) * scale;
-    // }
-
-    return 0.0f;
+    FontMetricsCache metrics = getFontMetricsCache();
+    return metrics.ascent - metrics.descent + metrics.line_gap;
 }

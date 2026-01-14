@@ -25,4 +25,6 @@ GlyphCacheEntry *getGlyphCache();
 
 FontMetricsCache getFontMetricsCache();
 
+float fontCacheGetKerning(int codepoint1, int codepoint2);
+
 void fontCacheQuit();

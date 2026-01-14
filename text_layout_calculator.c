@@ -1,5 +1,4 @@
 #include "text_layout_calculator.h"
-#include "font_cache.h"
 #include "text_render.h"
 #include <SDL3/SDL_keycode.h>
 #include <SDL3/SDL_pixels.h>
@@ -21,50 +20,63 @@ static inline int getCacheIndex(int codepoint) {
 int calculateTextLines(const char *text, int font_size, int layout_width,
                        int *out_line_starts) {
 
-    if (!text || font_size <= 0 || layout_width <= 0)
+    if (!text || !text[0] || font_size <= 0 || layout_width <= 0)
         return 0;
 
-    const int max_chars_per_line = layout_width / font_size;
-    if (max_chars_per_line <= 0) {
-        return 0;
-    }
+    // Measure space width once
+    float space_width;
+    textRenderMeasure(" ", (float)font_size, &space_width, NULL);
 
     int line_count = 0;
-    int line_start = 0;
-    int last_space = -1;
-    int char_count = 0;
+    int line_pos = 0; // Characters on current line
+    float current_line_width = 0.0f;
+    int char_offset = 0; // Start position of current line in original text
 
+    // First line always starts at 0
     out_line_starts[line_count++] = 0;
 
-    for (int i = 0; text[i] != '\0'; i++) {
-        char c = text[i];
-        char_count++;
+    const char *word_start = text;
+    const char *p = text;
 
-        if (c == ' ')
-            last_space = i;
+    while (*p) {
+        // Check for word boundary (space or end of text)
+        if (*p == ' ' || *(p + 1) == '\0') {
+            // Calculate word length (include word boundary as part of word)
+            int word_len = (p - word_start + 1);
 
-        if (c == '\n') {
-            line_start = i + 1;
-            out_line_starts[line_count++] = line_start;
-            char_count = 0;
-            last_space = -1;
-            continue;
-        }
+            if (word_len > 0 && word_len < 64) {
+                char word_buffer[64];
+                strncpy(word_buffer, word_start, word_len);
+                word_buffer[word_len] = '\0';
 
-        if (char_count >= max_chars_per_line) {
-            if (last_space >= line_start) {
-                // Wrap at last space
-                line_start = last_space + 1;
-                out_line_starts[line_count++] = line_start;
-                char_count = i - line_start + 1;
-                last_space = -1;
-            } else {
-                // Hard wrap
-                line_start = i;
-                out_line_starts[line_count++] = line_start;
-                char_count = 1;
+                // Measure word width
+                float word_width;
+                textRenderMeasure(word_buffer, (float)font_size, &word_width,
+                                  NULL);
+
+                if (line_pos > 0) {
+                    // Not first word on line - check if word fits
+                    float required_width =
+                        current_line_width + word_width + space_width;
+
+                    if (required_width > layout_width) {
+                        // Word doesn't fit - end current line, start new one
+                        char_offset += line_pos; // Move to next line start
+                        out_line_starts[line_count++] = char_offset;
+                        line_pos = 0;
+                        current_line_width = 0.0f;
+                    }
+                }
+
+                // Add word to current line
+                line_pos += word_len;
+                current_line_width += word_width;
             }
+
+            word_start = p + 1;
         }
+
+        p++;
     }
 
     return line_count;
@@ -77,10 +89,6 @@ void calculateTextLayoutLineBreaks(char *target_text, int font_size,
 
     line_count =
         calculateTextLines(target_text, font_size, layout_width, line_starts);
-
-    for (int i = 0; i < line_count; i++) {
-        SDL_Log("Line %d: %d", i, line_starts[i]);
-    }
 
     calculated_text_layout.line_count = line_count;
     for (int i = 0; i < line_count; i++) {
@@ -175,24 +183,4 @@ int calculateTextLayout(TextLayout *layout, const char *text, float max_width,
     }
 
     return layout->line_count;
-}
-
-static void textRenderMeasureWidth(const char *text,
-                                   GlyphCacheEntry *glyph_cache,
-                                   float font_size, float *width) {
-
-    if (width) {
-        float total_width = 0;
-        for (const char *p = text; *p; p++) {
-            int codepoint = (int)(*p);
-
-            // Use cached advance if available
-            total_width += glyph_cache[codepoint].advance;
-
-            if (*(p + 1)) {
-                int kern = total_width += glyph_cache[codepoint].advance;
-            }
-        }
-        *width = total_width;
-    }
 }
