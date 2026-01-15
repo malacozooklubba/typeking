@@ -26,6 +26,12 @@
 #define MODE_MEDIUM 30
 #define MODE_LONG 80
 
+// Difficulty modes
+typedef enum {
+    DIFFICULTY_EASY, // common_500.txt
+    DIFFICULTY_HARD  // oxford_3000.txt
+} DifficultyMode;
+
 typedef enum {
     SPLASH,
     LOBBY,
@@ -85,6 +91,7 @@ static char user_input[MAX_WORD_LENGTH * MAX_WORD_COUNT];
 static int user_input_pos = 0;
 static TypingStats typing_stats = {0};
 static int word_count = MODE_SHORT;
+static DifficultyMode difficulty_mode = DIFFICULTY_EASY;
 static bool position_had_error[MAX_WORD_LENGTH * MAX_WORD_COUNT] = {false};
 
 // Precalculated text layouts (not used anymore - using simpler
@@ -106,6 +113,7 @@ static Uint64 splash_start_time = 0;
 #define MAX_DICTIONARY_WORDS 5000
 static char *dictionary[MAX_DICTIONARY_WORDS] = {NULL};
 static int dictionary_loaded = 0;
+static DifficultyMode dictionary_difficulty = DIFFICULTY_EASY; // Track which difficulty dictionary was loaded for
 
 // State transition animation
 static StateTransition state_transition = {
@@ -415,10 +423,32 @@ static void renderSplashGameState() {
 }
 
 void renderLobbyGameState() {
-    const float y_start = 250.0f;
+    const float y_start = 200.0f;
     const float line_height = 50.0f;
     float current_y = y_start;
 
+    // Difficulty display
+    static char difficulty_text[64];
+    const char *difficulty_name = (difficulty_mode == DIFFICULTY_EASY) ? "EASY" : "HARD";
+    snprintf(difficulty_text, sizeof(difficulty_text), "DIFFICULTY: %s", difficulty_name);
+
+    UITextBox difficulty_box = uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
+    difficulty_box.text = difficulty_text;
+    difficulty_box.align = UI_ALIGN_CENTER;
+    difficulty_box.text_color = THEME_TEXT_TYPED;
+    uiTextBoxDraw(renderer, &difficulty_box);
+    current_y += line_height;
+
+    // Difficulty instructions
+    UITextBox difficulty_instructions_box =
+        uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
+    difficulty_instructions_box.text = "PRESS TAB TO TOGGLE DIFFICULTY";
+    difficulty_instructions_box.align = UI_ALIGN_CENTER;
+    difficulty_instructions_box.text_color = THEME_TEXT_UNTYPED;
+    uiTextBoxDraw(renderer, &difficulty_instructions_box);
+    current_y += line_height * 1.5f;
+
+    // Word count display
     static char mode_text[64];
     const char *mode_name;
     if (word_count == MODE_SHORT) {
@@ -431,15 +461,14 @@ void renderLobbyGameState() {
     snprintf(mode_text, sizeof(mode_text), "%s (%d WORDS)", mode_name,
              word_count);
 
-    // Mode display
     UITextBox mode_box = uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
     mode_box.text = mode_text;
     mode_box.align = UI_ALIGN_CENTER;
     mode_box.text_color = THEME_TEXT_TYPED;
     uiTextBoxDraw(renderer, &mode_box);
-    current_y += line_height * 1.5f;
+    current_y += line_height;
 
-    // Instructions
+    // Word count instructions
     UITextBox instructions_box =
         uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
     instructions_box.text = "PRESS 1, 2, OR 3 TO CHANGE MODE";
@@ -662,7 +691,10 @@ static void loadWords(int count) {
 
     const char *basePath = SDL_GetBasePath();
     char path[1024];
-    snprintf(path, sizeof(path), "%s/words/oxford_3000.txt", basePath);
+    const char *word_file = (difficulty_mode == DIFFICULTY_EASY)
+        ? "common_500.txt"
+        : "oxford_3000.txt";
+    snprintf(path, sizeof(path), "%s/words/%s", basePath, word_file);
 
     target_text[0] = '\0'; // Initialize empty string
 
@@ -676,8 +708,17 @@ static void loadWords(int count) {
     // Seed random number generator
     srand(time(NULL));
 
-    // Read all lines into memory (efficient single-pass approach)
-    if (dictionary_loaded == 0) {
+    // Read all lines into memory (reload if difficulty changed)
+    if (dictionary_loaded == 0 || dictionary_difficulty != difficulty_mode) {
+        // Free existing dictionary if reloading
+        for (int i = 0; i < dictionary_loaded; i++) {
+            if (dictionary[i]) {
+                free(dictionary[i]);
+                dictionary[i] = NULL;
+            }
+        }
+        dictionary_loaded = 0;
+        dictionary_difficulty = difficulty_mode;
         char buffer[64];
         while (fgets(buffer, sizeof(buffer), file) &&
                dictionary_loaded < MAX_DICTIONARY_WORDS) {
@@ -817,6 +858,12 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
         if (event->type == SDL_EVENT_KEY_DOWN) {
             if (event->key.key == SDLK_RETURN) {
                 enterTypingMode();
+            } else if (event->key.key == SDLK_TAB) {
+                difficulty_mode = (difficulty_mode == DIFFICULTY_EASY)
+                    ? DIFFICULTY_HARD
+                    : DIFFICULTY_EASY;
+                SDL_Log("Difficulty set to %s",
+                        (difficulty_mode == DIFFICULTY_EASY) ? "EASY" : "HARD");
             } else if (event->key.key == SDLK_1) {
                 word_count = MODE_SHORT;
                 SDL_Log("Mode set to SHORT (%d words)", word_count);
