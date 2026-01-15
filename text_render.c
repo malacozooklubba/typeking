@@ -66,6 +66,12 @@ void typedTextRenderDraw(SDL_Renderer *renderer, const char *text, float x,
         }
 
         GlyphCacheEntry glyph = glyph_cache[codepoint - 32];  // CACHE_START_CHAR is 32
+
+        // If space has error state, show underscore instead so error is visible
+        if (codepoint == ' ' && char_states[char_index] == 2) {
+            glyph = glyph_cache['_' - 32];
+        }
+
         SDL_Color glyph_color = {0x00, 0x00, 0x00, 0x00};
 
         switch (char_states[char_index]) {
