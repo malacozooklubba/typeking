@@ -27,6 +27,7 @@
 #define MODE_LONG 80
 
 typedef enum {
+    SPLASH,
     LOBBY,
     TYPING,
     RESULTS,
@@ -76,7 +77,7 @@ static SDL_Renderer *renderer = NULL;
 static int window_width = 1024;
 static int window_height = 720;
 static bool debug_info = false;
-static GameState game_state = LOBBY;
+static GameState game_state = SPLASH;
 
 // Typing game state variables
 static char target_text[MAX_WORD_LENGTH * MAX_WORD_COUNT];
@@ -96,6 +97,10 @@ static Uint64 last_frame_time = 0;
 // Frame rate limiting
 static float target_frame_time_ms = 16.666f; // Default to 60Hz
 static Uint64 frame_start_time = 0;
+
+// Splash screen timing
+static Uint64 splash_start_time = 0;
+#define SPLASH_DURATION_MS 2000.0f
 
 // Dictionary for word loading
 #define MAX_DICTIONARY_WORDS 5000
@@ -133,6 +138,11 @@ static void performStateChange(GameState new_state) {
     game_state = new_state;
 
     switch (new_state) {
+    case SPLASH:
+        splash_start_time = SDL_GetPerformanceCounter();
+        SDL_StopTextInput(window);
+        break;
+
     case LOBBY:
         SDL_StopTextInput(window);
         break;
@@ -341,6 +351,20 @@ static void updateCaretLerp(float delta_time) {
     }
 }
 
+static void updateSplashState(Uint64 current_time) {
+    if (game_state != SPLASH)
+        return;
+    if (state_transition.state != TRANSITION_NONE)
+        return;
+
+    float elapsed_ms = (current_time - splash_start_time) * 1000.0f /
+                       (float)SDL_GetPerformanceFrequency();
+
+    if (elapsed_ms >= SPLASH_DURATION_MS) {
+        beginTransition(LOBBY);
+    }
+}
+
 void enterLobbyMode(void) { beginTransition(LOBBY); }
 
 void enterTypingMode() {
@@ -351,6 +375,44 @@ void enterTypingMode() {
 }
 
 void enterResultsMode() { beginTransition(RESULTS); }
+
+static void renderSplashGameState() {
+    const char *crown_art[] = {
+        "*   *   *",
+        "** *** **",
+        "*********",
+        "*********",
+    };
+    const int crown_lines = 4;
+    float line_height = textRenderGetLineHeight(FONT_SIZE);
+
+    // Calculate total height of crown + title
+    float crown_height = crown_lines * line_height;
+    float title_height = line_height;
+    float gap = 30.0f;
+    float total_height = crown_height + gap + title_height;
+
+    // Center vertically
+    float start_y = (window_height - total_height) / 2.0f;
+
+    // Draw crown lines
+    for (int i = 0; i < crown_lines; i++) {
+        UITextBox crown_line = uiTextBoxCreate(0.0f, start_y + i * line_height,
+                                               window_width, line_height);
+        crown_line.text = crown_art[i];
+        crown_line.align = UI_ALIGN_CENTER;
+        crown_line.text_color = THEME_TEXT_TYPED;
+        uiTextBoxDraw(renderer, &crown_line);
+    }
+
+    // Draw "Type King" below crown
+    UITextBox title_box = uiTextBoxCreate(0.0f, start_y + crown_height + gap,
+                                          window_width, title_height);
+    title_box.text = game_name;
+    title_box.align = UI_ALIGN_CENTER;
+    title_box.text_color = THEME_TEXT_TYPED;
+    uiTextBoxDraw(renderer, &title_box);
+}
 
 void renderLobbyGameState() {
     const float y_start = 250.0f;
@@ -711,7 +773,8 @@ SDL_AppResult SDL_AppInit(__attribute__((unused)) void **appstate,
     // Initialize typing stats performance frequency
     typing_stats.performance_frequency = SDL_GetPerformanceFrequency();
 
-    enterLobbyMode();
+    // Initialize splash screen timer
+    splash_start_time = SDL_GetPerformanceCounter();
 
     return SDL_APP_CONTINUE;
 }
@@ -741,10 +804,15 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
         if (event->key.key == SDLK_F3) {
             debug_info = !debug_info;
             SDL_Log("Debug UI %s", debug_info ? "enabled" : "disabled");
+        } else if (event->key.key == SDLK_ESCAPE) {
+            enterLobbyMode();
         }
     }
 
     switch (game_state) {
+    case SPLASH:
+        // No input handling during splash screen
+        break;
     case LOBBY:
         if (event->type == SDL_EVENT_KEY_DOWN) {
             if (event->key.key == SDLK_RETURN) {
@@ -762,22 +830,18 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
         }
         break;
     case TYPING:
-        if (event->type == SDL_EVENT_KEY_DOWN) {
-            if (event->key.key == SDLK_BACKSPACE) {
-                // Remove last character from input buffer
-                if (user_input_pos > 0) {
-                    user_input_pos--;
-                    user_input[user_input_pos] = '\0';
+        if (event->type == SDL_EVENT_KEY_DOWN &&
+            event->key.key == SDLK_BACKSPACE) {
+            // Remove last character from input buffer
+            if (user_input_pos > 0) {
+                user_input_pos--;
+                user_input[user_input_pos] = '\0';
 
-                    // Recalculate layout
-                    const float text_max_width =
-                        window_width - window_padding * 2;
-                    user_input_layout.line_count = calculateTextLines(
-                        user_input, FONT_SIZE, text_max_width,
-                        user_input_layout.line_starts);
-                }
-            } else if (event->key.key == SDLK_ESCAPE) {
-                enterLobbyMode();
+                // Recalculate layout
+                const float text_max_width = window_width - window_padding * 2;
+                user_input_layout.line_count =
+                    calculateTextLines(user_input, FONT_SIZE, text_max_width,
+                                       user_input_layout.line_starts);
             }
         }
 
@@ -805,12 +869,12 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
                                        user_input_layout.line_starts);
 
                 // Check if this is an error and hasn't been counted yet
-                if (current_pos < strlen(target_text)) {
-                    if (typed_char != target_text[current_pos] &&
-                        !position_had_error[current_pos]) {
-                        typing_stats.error_chars++;
-                        position_had_error[current_pos] = true;
-                    }
+                if (current_pos < strlen(target_text) &&
+                    typed_char != target_text[current_pos] &&
+                    !position_had_error[current_pos]) {
+
+                    typing_stats.error_chars++;
+                    position_had_error[current_pos] = true;
                 }
 
                 // Check if user has typed all the text
@@ -821,12 +885,9 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
         }
         break;
     case RESULTS:
-        if (event->type == SDL_EVENT_KEY_DOWN) {
-            if (event->key.key == SDLK_RETURN) {
-                enterTypingMode();
-            } else if (event->key.key == SDLK_ESCAPE) {
-                enterLobbyMode();
-            }
+        if (event->type == SDL_EVENT_KEY_DOWN &&
+            event->key.key == SDLK_RETURN) {
+            enterTypingMode();
         }
         break;
     }
@@ -850,6 +911,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
     // Update transition state
     updateTransitionState(current_time);
+    updateSplashState(current_time);
 
     // Update caret lerp animation
     updateCaretLerp(delta_time);
@@ -861,6 +923,9 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
     // Run game state machine
     switch (game_state) {
+    case SPLASH:
+        renderSplashGameState();
+        break;
     case LOBBY:
         renderLobbyGameState();
         break;
