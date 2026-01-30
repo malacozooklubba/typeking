@@ -22,9 +22,9 @@
 #define MAX_WORD_LENGTH 32
 
 // Word count modes
-#define MODE_SHORT 10
-#define MODE_MEDIUM 30
-#define MODE_LONG 80
+#define MODE_SHORT 15
+#define MODE_MEDIUM 25
+#define MODE_LONG 50
 
 // Difficulty modes
 typedef enum {
@@ -94,8 +94,6 @@ static int word_count = MODE_SHORT;
 static DifficultyMode difficulty_mode = DIFFICULTY_EASY;
 static bool position_had_error[MAX_WORD_LENGTH * MAX_WORD_COUNT] = {false};
 
-// Precalculated text layouts (not used anymore - using simpler
-// PrecalculatedTextLayout)
 static PrecalculatedTextLayout user_input_layout = {0};
 
 // Animation timing
@@ -116,7 +114,8 @@ static Uint64 splash_start_time = 0;
 #define MAX_DICTIONARY_WORDS 5000
 static char *dictionary[MAX_DICTIONARY_WORDS] = {NULL};
 static int dictionary_loaded = 0;
-static DifficultyMode dictionary_difficulty = DIFFICULTY_EASY; // Track which difficulty dictionary was loaded for
+static DifficultyMode dictionary_difficulty =
+    DIFFICULTY_EASY; // Track which difficulty dictionary was loaded for
 
 // State transition animation
 static StateTransition state_transition = {
@@ -227,7 +226,7 @@ static bool updateTransitionState(Uint64 current_time) {
             return false;
         }
     }
-    return true;  // Animation still active
+    return true; // Animation still active
 }
 
 static void renderTransitionOverlay(SDL_Renderer *renderer,
@@ -349,7 +348,7 @@ static bool updateCaretLerp(float delta_time) {
         caret_current_line = new_line;
         caret_target_x = measured_width;
         caret_visual_x = measured_width; // Snap instantly
-        return false;  // No ongoing animation after snap
+        return false;                    // No ongoing animation after snap
     }
 
     // Same line - update target
@@ -363,10 +362,10 @@ static bool updateCaretLerp(float delta_time) {
     // Snap when very close (within 0.5 pixels)
     if (fabsf(caret_target_x - caret_visual_x) < 0.5f) {
         caret_visual_x = caret_target_x;
-        return false;  // Animation complete
+        return false; // Animation complete
     }
 
-    return true;  // Still animating
+    return true; // Still animating
 }
 
 // Returns true if splash state changed (triggered transition)
@@ -442,10 +441,13 @@ void renderLobbyGameState() {
 
     // Difficulty display
     static char difficulty_text[64];
-    const char *difficulty_name = (difficulty_mode == DIFFICULTY_EASY) ? "EASY" : "HARD";
-    snprintf(difficulty_text, sizeof(difficulty_text), "DIFFICULTY: %s", difficulty_name);
+    const char *difficulty_name =
+        (difficulty_mode == DIFFICULTY_EASY) ? "EASY" : "HARD";
+    snprintf(difficulty_text, sizeof(difficulty_text), "DIFFICULTY: %s",
+             difficulty_name);
 
-    UITextBox difficulty_box = uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
+    UITextBox difficulty_box =
+        uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
     difficulty_box.text = difficulty_text;
     difficulty_box.align = UI_ALIGN_CENTER;
     difficulty_box.text_color = THEME_TEXT_TYPED;
@@ -515,7 +517,6 @@ static void compareInputToTarget(const char *target, const char *input,
 }
 
 static void calculateTypingStats() {
-    // Calculate elapsed time
     if (typing_stats.timer_started) {
         typing_stats.elapsed_seconds =
             (typing_stats.end_time - typing_stats.start_time) /
@@ -524,12 +525,6 @@ static void calculateTypingStats() {
         typing_stats.elapsed_seconds = 0.0;
     }
 
-    // Prevent extreme values from very fast typing
-    if (typing_stats.elapsed_seconds < 0.01) {
-        typing_stats.elapsed_seconds = 0.01;
-    }
-
-    // Calculate correct words using strict character-by-character matching
     typing_stats.correct_words = 0;
     char target_word[MAX_WORD_LENGTH];
     char input_word[MAX_WORD_LENGTH];
@@ -556,7 +551,6 @@ static void calculateTypingStats() {
         if (*input_p == ' ')
             input_p++;
 
-        // Compare words strictly
         if (target_len > 0 && strcmp(target_word, input_word) == 0) {
             typing_stats.correct_words++;
         }
@@ -696,7 +690,6 @@ void renderResultsGameState() {
 }
 
 static void loadWords(int count) {
-    // Clamp count to valid range
     if (count < 1)
         count = 1;
     if (count > MAX_WORD_COUNT)
@@ -705,8 +698,8 @@ static void loadWords(int count) {
     const char *basePath = SDL_GetBasePath();
     char path[1024];
     const char *word_file = (difficulty_mode == DIFFICULTY_EASY)
-        ? "common_500.txt"
-        : "oxford_3000.txt";
+                                ? "common_500.txt"
+                                : "oxford_3000.txt";
     snprintf(path, sizeof(path), "%s/words/%s", basePath, word_file);
 
     target_text[0] = '\0'; // Initialize empty string
@@ -877,8 +870,8 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
                 enterTypingMode();
             } else if (event->key.key == SDLK_TAB) {
                 difficulty_mode = (difficulty_mode == DIFFICULTY_EASY)
-                    ? DIFFICULTY_HARD
-                    : DIFFICULTY_EASY;
+                                      ? DIFFICULTY_HARD
+                                      : DIFFICULTY_EASY;
                 needs_redraw = true;
                 SDL_Log("Difficulty set to %s",
                         (difficulty_mode == DIFFICULTY_EASY) ? "EASY" : "HARD");
@@ -1022,7 +1015,8 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
         needs_redraw = false;
 
-        // Frame rate limiting when rendering: sleep if frame finished too quickly
+        // Frame rate limiting when rendering: sleep if frame finished too
+        // quickly
         Uint64 frame_end_time = SDL_GetPerformanceCounter();
         Uint64 frame_ticks = frame_end_time - frame_start_time;
         float frame_time_ms =
@@ -1034,7 +1028,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         }
     } else {
         // Idle: use longer delay to save CPU while still polling events
-        SDL_Delay(16);
+        SDL_Delay(target_frame_time_ms);
     }
 
     return SDL_APP_CONTINUE;
