@@ -105,6 +105,9 @@ static Uint64 last_frame_time = 0;
 static float target_frame_time_ms = 16.666f; // Default to 60Hz
 static Uint64 frame_start_time = 0;
 
+// Dirty flag for rendering - only redraw when something changes
+static bool needs_redraw = true;
+
 // Splash screen timing
 static Uint64 splash_start_time = 0;
 #define SPLASH_DURATION_MS 2000.0f
@@ -200,9 +203,10 @@ static void performStateChange(GameState new_state) {
     }
 }
 
-static void updateTransitionState(Uint64 current_time) {
+// Returns true if transition is active (needs rendering)
+static bool updateTransitionState(Uint64 current_time) {
     if (state_transition.state == TRANSITION_NONE)
-        return;
+        return false;
 
     float elapsed_ms = (current_time - state_transition.start_time) * 1000.0f /
                        (float)SDL_GetPerformanceFrequency();
@@ -220,8 +224,10 @@ static void updateTransitionState(Uint64 current_time) {
         if (elapsed_ms >= state_transition.duration_ms) {
             // Transition complete
             state_transition.state = TRANSITION_NONE;
+            return false;
         }
     }
+    return true;  // Animation still active
 }
 
 static void renderTransitionOverlay(SDL_Renderer *renderer,
@@ -296,12 +302,13 @@ static int findCaretLine(int caret_pos, const PrecalculatedTextLayout *layout,
     return 0;
 }
 
-static void updateCaretLerp(float delta_time) {
+// Returns true if caret is still animating (not at target)
+static bool updateCaretLerp(float delta_time) {
     if (game_state != TYPING) {
         caret_visual_x = 0.0f;
         caret_target_x = 0.0f;
         caret_current_line = 0;
-        return;
+        return false;
     }
 
     // Calculate target X position from current input
@@ -309,7 +316,7 @@ static void updateCaretLerp(float delta_time) {
         caret_target_x = 0.0f;
         caret_visual_x = 0.0f;
         caret_current_line = 0;
-        return;
+        return false;
     }
 
     // Use the SAME layout as rendering (target_text layout) to ensure
@@ -342,7 +349,7 @@ static void updateCaretLerp(float delta_time) {
         caret_current_line = new_line;
         caret_target_x = measured_width;
         caret_visual_x = measured_width; // Snap instantly
-        return;
+        return false;  // No ongoing animation after snap
     }
 
     // Same line - update target
@@ -356,21 +363,27 @@ static void updateCaretLerp(float delta_time) {
     // Snap when very close (within 0.5 pixels)
     if (fabsf(caret_target_x - caret_visual_x) < 0.5f) {
         caret_visual_x = caret_target_x;
+        return false;  // Animation complete
     }
+
+    return true;  // Still animating
 }
 
-static void updateSplashState(Uint64 current_time) {
+// Returns true if splash state changed (triggered transition)
+static bool updateSplashState(Uint64 current_time) {
     if (game_state != SPLASH)
-        return;
+        return false;
     if (state_transition.state != TRANSITION_NONE)
-        return;
+        return false;
 
     float elapsed_ms = (current_time - splash_start_time) * 1000.0f /
                        (float)SDL_GetPerformanceFrequency();
 
     if (elapsed_ms >= SPLASH_DURATION_MS) {
         beginTransition(LOBBY);
+        return true;
     }
+    return false;
 }
 
 void enterLobbyMode(void) { beginTransition(LOBBY); }
@@ -827,6 +840,7 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
     }
     if (event->type == SDL_EVENT_WINDOW_RESIZED) {
         SDL_GetWindowSizeInPixels(window, &window_width, &window_height);
+        needs_redraw = true;
 
         // Recalculate layouts if in typing mode
         if (game_state == TYPING) {
@@ -844,8 +858,10 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
     if (event->type == SDL_EVENT_KEY_DOWN) {
         if (event->key.key == SDLK_F3) {
             debug_info = !debug_info;
+            needs_redraw = true;
             SDL_Log("Debug UI %s", debug_info ? "enabled" : "disabled");
         } else if (event->key.key == SDLK_ESCAPE) {
+            needs_redraw = true;
             enterLobbyMode();
         }
     }
@@ -857,21 +873,26 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
     case LOBBY:
         if (event->type == SDL_EVENT_KEY_DOWN) {
             if (event->key.key == SDLK_RETURN) {
+                needs_redraw = true;
                 enterTypingMode();
             } else if (event->key.key == SDLK_TAB) {
                 difficulty_mode = (difficulty_mode == DIFFICULTY_EASY)
                     ? DIFFICULTY_HARD
                     : DIFFICULTY_EASY;
+                needs_redraw = true;
                 SDL_Log("Difficulty set to %s",
                         (difficulty_mode == DIFFICULTY_EASY) ? "EASY" : "HARD");
             } else if (event->key.key == SDLK_1) {
                 word_count = MODE_SHORT;
+                needs_redraw = true;
                 SDL_Log("Mode set to SHORT (%d words)", word_count);
             } else if (event->key.key == SDLK_2) {
                 word_count = MODE_MEDIUM;
+                needs_redraw = true;
                 SDL_Log("Mode set to MEDIUM (%d words)", word_count);
             } else if (event->key.key == SDLK_3) {
                 word_count = MODE_LONG;
+                needs_redraw = true;
                 SDL_Log("Mode set to LONG (%d words)", word_count);
             }
         }
@@ -883,6 +904,7 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
             if (user_input_pos > 0) {
                 user_input_pos--;
                 user_input[user_input_pos] = '\0';
+                needs_redraw = true;
 
                 // Recalculate layout
                 const float text_max_width = window_width - window_padding * 2;
@@ -908,6 +930,7 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
                 // Add character to buffer
                 user_input[user_input_pos++] = typed_char;
                 user_input[user_input_pos] = '\0';
+                needs_redraw = true;
 
                 // Recalculate layout
                 const float text_max_width = window_width - window_padding * 2;
@@ -934,6 +957,7 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
     case RESULTS:
         if (event->type == SDL_EVENT_KEY_DOWN &&
             event->key.key == SDLK_RETURN) {
+            needs_redraw = true;
             enterTypingMode();
         }
         break;
@@ -956,54 +980,61 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     }
     last_frame_time = current_time;
 
-    // Update transition state
-    updateTransitionState(current_time);
-    updateSplashState(current_time);
+    // Update animations and track if any are active
+    bool animating = false;
+    animating |= updateTransitionState(current_time);
+    animating |= updateSplashState(current_time);
+    animating |= updateCaretLerp(delta_time);
 
-    // Update caret lerp animation
-    updateCaretLerp(delta_time);
+    // Only render if dirty or animating
+    if (needs_redraw || animating) {
+        /* ==== Render Loop ==== */
+        SDL_SetRenderDrawColor(renderer, THEME_BACKGROUND.r, THEME_BACKGROUND.g,
+                               THEME_BACKGROUND.b, THEME_BACKGROUND.a);
+        SDL_RenderClear(renderer);
 
-    /* ==== Render Loop ==== */
-    SDL_SetRenderDrawColor(renderer, THEME_BACKGROUND.r, THEME_BACKGROUND.g,
-                           THEME_BACKGROUND.b, THEME_BACKGROUND.a);
-    SDL_RenderClear(renderer);
+        // Run game state machine
+        switch (game_state) {
+        case SPLASH:
+            renderSplashGameState();
+            break;
+        case LOBBY:
+            renderLobbyGameState();
+            break;
+        case TYPING:
+            renderTypingGameState();
+            break;
+        case RESULTS:
+            renderResultsGameState();
+            break;
+        }
 
-    // Run game state machine
-    switch (game_state) {
-    case SPLASH:
-        renderSplashGameState();
-        break;
-    case LOBBY:
-        renderLobbyGameState();
-        break;
-    case TYPING:
-        renderTypingGameState();
-        break;
-    case RESULTS:
-        renderResultsGameState();
-        break;
-    }
+        // Render fade overlay on top
+        renderTransitionOverlay(renderer, current_time);
 
-    // Render fade overlay on top
-    renderTransitionOverlay(renderer, current_time);
+        // Draw debug UI (if enabled)
+        if (debug_info) {
+            drawFps(renderer);
+        }
 
-    // Draw debug UI (if enabled)
-    if (debug_info) {
-        drawFps(renderer);
-    }
+        SDL_RenderPresent(renderer);
+        /* ===================== */
 
-    SDL_RenderPresent(renderer);
-    /* ===================== */
+        needs_redraw = false;
 
-    // Frame rate limiting: sleep if frame finished too quickly
-    Uint64 frame_end_time = SDL_GetPerformanceCounter();
-    Uint64 frame_ticks = frame_end_time - frame_start_time;
-    float frame_time_ms =
-        (frame_ticks * 1000.0f) / SDL_GetPerformanceFrequency();
+        // Frame rate limiting when rendering: sleep if frame finished too quickly
+        Uint64 frame_end_time = SDL_GetPerformanceCounter();
+        Uint64 frame_ticks = frame_end_time - frame_start_time;
+        float frame_time_ms =
+            (frame_ticks * 1000.0f) / SDL_GetPerformanceFrequency();
 
-    if (frame_time_ms < target_frame_time_ms) {
-        float sleep_time_ms = target_frame_time_ms - frame_time_ms;
-        SDL_Delay((Uint32)sleep_time_ms);
+        if (frame_time_ms < target_frame_time_ms) {
+            float sleep_time_ms = target_frame_time_ms - frame_time_ms;
+            SDL_Delay((Uint32)sleep_time_ms);
+        }
+    } else {
+        // Idle: use longer delay to save CPU while still polling events
+        SDL_Delay(16);
     }
 
     return SDL_APP_CONTINUE;
