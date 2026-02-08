@@ -34,7 +34,8 @@ typedef struct {
 } UITextBox;
 
 // Initialize a text box with default values
-UITextBox uiTextBoxCreate(float x, float y, float width, float height);
+UITextBox uiTextBoxCreate(float x, float y, float width, float height,
+                          float fort_size);
 
 // Draw a text box with background, border, padding, and multi-line text
 void uiTextBoxDraw(SDL_Renderer *renderer, const UITextBox *box);

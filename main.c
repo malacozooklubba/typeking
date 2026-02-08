@@ -17,7 +17,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
-#define FONT_SIZE 42.0f
+#define FONT_SIZE 64.0f
 #define MAX_WORD_COUNT 100
 #define MAX_WORD_LENGTH 32
 
@@ -25,12 +25,6 @@
 #define MODE_SHORT 15
 #define MODE_MEDIUM 25
 #define MODE_LONG 50
-
-// Difficulty modes
-typedef enum {
-    DIFFICULTY_EASY, // common_500.txt
-    DIFFICULTY_HARD  // oxford_3000.txt
-} DifficultyMode;
 
 typedef enum {
     SPLASH,
@@ -91,7 +85,6 @@ static char user_input[MAX_WORD_LENGTH * MAX_WORD_COUNT];
 static int user_input_pos = 0;
 static TypingStats typing_stats = {0};
 static int word_count = MODE_SHORT;
-static DifficultyMode difficulty_mode = DIFFICULTY_EASY;
 static bool position_had_error[MAX_WORD_LENGTH * MAX_WORD_COUNT] = {false};
 
 static PrecalculatedTextLayout user_input_layout = {0};
@@ -114,8 +107,6 @@ static Uint64 splash_start_time = 0;
 #define MAX_DICTIONARY_WORDS 5000
 static char *dictionary[MAX_DICTIONARY_WORDS] = {NULL};
 static int dictionary_loaded = 0;
-static DifficultyMode dictionary_difficulty =
-    DIFFICULTY_EASY; // Track which difficulty dictionary was loaded for
 
 // State transition animation
 static StateTransition state_transition = {
@@ -417,8 +408,9 @@ static void renderSplashGameState() {
 
     // Draw crown lines
     for (int i = 0; i < crown_lines; i++) {
-        UITextBox crown_line = uiTextBoxCreate(0.0f, start_y + i * line_height,
-                                               window_width, line_height);
+        UITextBox crown_line =
+            uiTextBoxCreate(0.0f, start_y + i * line_height, window_width,
+                            line_height, FONT_SIZE);
         crown_line.text = crown_art[i];
         crown_line.align = UI_ALIGN_CENTER;
         crown_line.text_color = THEME_TEXT_TYPED;
@@ -426,8 +418,9 @@ static void renderSplashGameState() {
     }
 
     // Draw "Type King" below crown
-    UITextBox title_box = uiTextBoxCreate(0.0f, start_y + crown_height + gap,
-                                          window_width, title_height);
+    UITextBox title_box =
+        uiTextBoxCreate(0.0f, start_y + crown_height + gap, window_width,
+                        title_height, FONT_SIZE);
     title_box.text = game_name;
     title_box.align = UI_ALIGN_CENTER;
     title_box.text_color = THEME_TEXT_TYPED;
@@ -435,48 +428,25 @@ static void renderSplashGameState() {
 }
 
 void renderLobbyGameState() {
-    const float y_start = 200.0f;
-    const float line_height = 50.0f;
+    const float y_start = 50.0f;
+    const float line_height = 80.0f;
     float current_y = y_start;
-
-    // Difficulty display
-    static char difficulty_text[64];
-    const char *difficulty_name =
-        (difficulty_mode == DIFFICULTY_EASY) ? "EASY" : "HARD";
-    snprintf(difficulty_text, sizeof(difficulty_text), "DIFFICULTY: %s",
-             difficulty_name);
-
-    UITextBox difficulty_box =
-        uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
-    difficulty_box.text = difficulty_text;
-    difficulty_box.align = UI_ALIGN_CENTER;
-    difficulty_box.text_color = THEME_TEXT_TYPED;
-    uiTextBoxDraw(renderer, &difficulty_box);
-    current_y += line_height;
-
-    // Difficulty instructions
-    UITextBox difficulty_instructions_box =
-        uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
-    difficulty_instructions_box.text = "PRESS TAB TO TOGGLE DIFFICULTY";
-    difficulty_instructions_box.align = UI_ALIGN_CENTER;
-    difficulty_instructions_box.text_color = THEME_TEXT_UNTYPED;
-    uiTextBoxDraw(renderer, &difficulty_instructions_box);
-    current_y += line_height * 1.5f;
 
     // Word count display
     static char mode_text[64];
     const char *mode_name;
     if (word_count == MODE_SHORT) {
-        mode_name = "SHORT";
+        mode_name = "Short";
     } else if (word_count == MODE_MEDIUM) {
-        mode_name = "MEDIUM";
+        mode_name = "Medium";
     } else {
-        mode_name = "LONG";
+        mode_name = "Long";
     }
-    snprintf(mode_text, sizeof(mode_text), "%s (%d WORDS)", mode_name,
+    snprintf(mode_text, sizeof(mode_text), "%s (%d words)", mode_name,
              word_count);
 
-    UITextBox mode_box = uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
+    UITextBox mode_box =
+        uiTextBoxCreate(0.0f, current_y, window_width, 50.0f, FONT_SIZE);
     mode_box.text = mode_text;
     mode_box.align = UI_ALIGN_CENTER;
     mode_box.text_color = THEME_TEXT_TYPED;
@@ -485,16 +455,17 @@ void renderLobbyGameState() {
 
     // Word count instructions
     UITextBox instructions_box =
-        uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
-    instructions_box.text = "PRESS 1, 2, OR 3 TO CHANGE MODE";
+        uiTextBoxCreate(0.0f, current_y, window_width, 50.0f, FONT_SIZE);
+    instructions_box.text = "1, 2, or 3 to change mode";
     instructions_box.align = UI_ALIGN_CENTER;
     instructions_box.text_color = THEME_TEXT_UNTYPED;
     uiTextBoxDraw(renderer, &instructions_box);
     current_y += line_height * 1.5f;
 
     // Start message
-    UITextBox start_box = uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
-    start_box.text = "PRESS ENTER TO START";
+    UITextBox start_box =
+        uiTextBoxCreate(0.0f, current_y, window_width, 50.0f, FONT_SIZE);
+    start_box.text = "ENTER to start";
     start_box.align = UI_ALIGN_CENTER;
     start_box.text_color = THEME_TEXT_TYPED;
     uiTextBoxDraw(renderer, &start_box);
@@ -620,8 +591,9 @@ void renderTypingGameState() {
         display_text_buffer[input_len] = '\0';
     }
 
-    UITextBox box1 = uiTextBoxCreate(window_padding, 50.0f,
-                                     window_width - window_padding * 2, 150.0f);
+    UITextBox box1 =
+        uiTextBoxCreate(window_padding, 50.0f,
+                        window_width - window_padding * 2, 150.0f, FONT_SIZE);
 
     box1.text = display_text_buffer;
     box1.char_states = char_states_buffer;
@@ -650,14 +622,16 @@ void renderResultsGameState() {
     snprintf(accuracy_text, sizeof(accuracy_text), "ACCURACY: %.1f%%",
              typing_stats.accuracy);
 
-    UITextBox wpm_box = uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
+    UITextBox wpm_box =
+        uiTextBoxCreate(0.0f, current_y, window_width, 50.0f, FONT_SIZE);
     wpm_box.text = wpm_text;
     wpm_box.align = UI_ALIGN_CENTER;
     wpm_box.text_color = THEME_TEXT_TYPED;
     uiTextBoxDraw(renderer, &wpm_box);
     current_y += line_height;
 
-    UITextBox cps_box = uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
+    UITextBox cps_box =
+        uiTextBoxCreate(0.0f, current_y, window_width, 50.0f, FONT_SIZE);
     cps_box.text = cps_text;
     cps_box.align = UI_ALIGN_CENTER;
     cps_box.text_color = THEME_TEXT_TYPED;
@@ -665,7 +639,7 @@ void renderResultsGameState() {
     current_y += line_height;
 
     UITextBox accuracy_box =
-        uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
+        uiTextBoxCreate(0.0f, current_y, window_width, 50.0f, FONT_SIZE);
     accuracy_box.text = accuracy_text;
     accuracy_box.align = UI_ALIGN_CENTER;
     accuracy_box.text_color = THEME_TEXT_TYPED;
@@ -674,7 +648,7 @@ void renderResultsGameState() {
 
     // Continue instruction
     UITextBox continue_box =
-        uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
+        uiTextBoxCreate(0.0f, current_y, window_width, 50.0f, FONT_SIZE);
     continue_box.text = "Enter to restart";
     continue_box.align = UI_ALIGN_CENTER;
     continue_box.text_color = THEME_TEXT_UNTYPED;
@@ -682,7 +656,8 @@ void renderResultsGameState() {
     current_y += line_height;
 
     // Continue instruction
-    UITextBox exit_box = uiTextBoxCreate(0.0f, current_y, window_width, 50.0f);
+    UITextBox exit_box =
+        uiTextBoxCreate(0.0f, current_y, window_width, 50.0f, FONT_SIZE);
     exit_box.text = "Escape to return to lobby";
     exit_box.align = UI_ALIGN_CENTER;
     exit_box.text_color = THEME_TEXT_UNTYPED;
@@ -697,9 +672,7 @@ static void loadWords(int count) {
 
     const char *basePath = SDL_GetBasePath();
     char path[1024];
-    const char *word_file = (difficulty_mode == DIFFICULTY_EASY)
-                                ? "common_500.txt"
-                                : "oxford_3000.txt";
+    const char *word_file = "common_500.txt";
     snprintf(path, sizeof(path), "%s/words/%s", basePath, word_file);
 
     target_text[0] = '\0'; // Initialize empty string
@@ -714,8 +687,8 @@ static void loadWords(int count) {
     // Seed random number generator
     srand(time(NULL));
 
-    // Read all lines into memory (reload if difficulty changed)
-    if (dictionary_loaded == 0 || dictionary_difficulty != difficulty_mode) {
+    // Read all lines into memory
+    if (dictionary_loaded == 0) {
         // Free existing dictionary if reloading
         for (int i = 0; i < dictionary_loaded; i++) {
             if (dictionary[i]) {
@@ -724,7 +697,6 @@ static void loadWords(int count) {
             }
         }
         dictionary_loaded = 0;
-        dictionary_difficulty = difficulty_mode;
         char buffer[64];
         while (fgets(buffer, sizeof(buffer), file) &&
                dictionary_loaded < MAX_DICTIONARY_WORDS) {
@@ -868,13 +840,6 @@ SDL_AppResult SDL_AppEvent(__attribute__((unused)) void *appstate,
             if (event->key.key == SDLK_RETURN) {
                 needs_redraw = true;
                 enterTypingMode();
-            } else if (event->key.key == SDLK_TAB) {
-                difficulty_mode = (difficulty_mode == DIFFICULTY_EASY)
-                                      ? DIFFICULTY_HARD
-                                      : DIFFICULTY_EASY;
-                needs_redraw = true;
-                SDL_Log("Difficulty set to %s",
-                        (difficulty_mode == DIFFICULTY_EASY) ? "EASY" : "HARD");
             } else if (event->key.key == SDLK_1) {
                 word_count = MODE_SHORT;
                 needs_redraw = true;

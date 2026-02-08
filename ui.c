@@ -5,20 +5,21 @@
 #include <SDL3/SDL.h>
 #include <string.h>
 
-UITextBox uiTextBoxCreate(float x, float y, float width, float height) {
+UITextBox uiTextBoxCreate(float x, float y, float width, float height,
+                          float font_size) {
     UITextBox box = {.x = x,
                      .y = y,
                      .width = width,
                      .height = height,
-                     .padding = {.top = 10.0f,
-                                 .right = 10.0f,
-                                 .bottom = 10.0f,
-                                 .left = 10.0f},
+                     .padding = {.top = 50.0f,
+                                 .right = 50.0f,
+                                 .bottom = 50.0f,
+                                 .left = 50.0f},
                      .bg_color = THEME_BACKGROUND,
                      .text_color = THEME_TEXT_TYPED,
                      .text = "",
                      .char_states = NULL,
-                     .font_size = 42.0f,
+                     .font_size = font_size,
                      .align = UI_ALIGN_START,
                      .caret_position = -1};
     return box;
@@ -72,8 +73,9 @@ static inline void renderAlignedLine(SDL_Renderer *renderer,
                                 box->font_size, char_states + char_offset);
         } else {
             // Render without char states if offset is invalid
-            textRenderDraw(renderer, line_buffer, text_x, text_y, getGlyphCache(),
-                           getFontMetricsCache(), box->text_color);
+            textRenderDraw(renderer, line_buffer, text_x, text_y,
+                           getGlyphCache(), getFontMetricsCache(),
+                           box->text_color);
         }
     } else {
         textRenderDraw(renderer, line_buffer, text_x, text_y, getGlyphCache(),
