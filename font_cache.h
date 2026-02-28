@@ -1,9 +1,9 @@
 #pragma once
 
-#include <SDL3/SDL.h>
+#include <stdbool.h>
 
 typedef struct {
-    SDL_Texture *texture;
+    unsigned char *bitmap;
     int width, height;
     int xoff, yoff;
     int advance;
@@ -16,8 +16,7 @@ typedef struct {
     float line_gap;
 } FontMetricsCache;
 
-bool fontCacheInit(SDL_Renderer *renderer, const char *font_path,
-                   float font_size);
+bool fontCacheInit(const char *font_path, float font_size);
 
 GlyphCacheEntry getGlyphCacheEntry(int codepoint);
 

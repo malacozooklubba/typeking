@@ -1,8 +1,6 @@
 #include "text_layout_calculator.h"
 #include "text_render.h"
-#include <SDL3/SDL_keycode.h>
-#include <SDL3/SDL_pixels.h>
-#include <time.h>
+#include <string.h>
 
 #define CACHE_START_CHAR 32
 #define CACHE_END_CHAR 126

@@ -1,6 +1,7 @@
 #pragma once
 
-#include <SDL3/SDL_render.h>
+#include "framebuffer.h"
+#include "theme.h"
 #include <stdbool.h>
 
 typedef enum {
@@ -22,8 +23,8 @@ typedef struct {
     float width;
     float height;
     UIPadding padding;
-    SDL_Color bg_color;
-    SDL_Color text_color;
+    Color bg_color;
+    Color text_color;
     const char *text;
     const unsigned char *char_states;
     float font_size;
@@ -38,6 +39,6 @@ UITextBox uiTextBoxCreate(float x, float y, float width, float height,
                           float fort_size);
 
 // Draw a text box with background, border, padding, and multi-line text
-void uiTextBoxDraw(SDL_Renderer *renderer, const UITextBox *box);
+void uiTextBoxDraw(Framebuffer *fb, const UITextBox *box);
 
-void drawPrecalculatedTextLayout(SDL_Renderer *renderer, const UITextBox *box);
+void drawPrecalculatedTextLayout(Framebuffer *fb, const UITextBox *box);

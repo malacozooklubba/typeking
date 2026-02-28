@@ -1,15 +1,16 @@
 #pragma once
 
 #include "font_cache.h"
-#include <SDL3/SDL_render.h>
+#include "framebuffer.h"
+#include "theme.h"
 #include <stdbool.h>
 
 // Render a single line of text at position (x, y)
-void textRenderDraw(SDL_Renderer *renderer, const char *text, float x, float y,
+void textRenderDraw(Framebuffer *fb, const char *text, float x, float y,
                     GlyphCacheEntry *glyph_cache, FontMetricsCache metrics,
-                    SDL_Color color);
+                    Color color);
 
-void typedTextRenderDraw(SDL_Renderer *renderer, const char *text, float x,
+void typedTextRenderDraw(Framebuffer *fb, const char *text, float x,
                          float y, float font_size,
                          const unsigned char *char_states);
 

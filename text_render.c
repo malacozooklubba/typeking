@@ -1,14 +1,11 @@
 #include "text_render.h"
 #include "font_cache.h"
 #include "theme.h"
-#include <SDL3/SDL.h>
-#include <SDL3/SDL_render.h>
-#include <SDL3/SDL_surface.h>
 #include <stdlib.h>
 
-void textRenderDraw(SDL_Renderer *renderer, const char *text, float x, float y,
+void textRenderDraw(Framebuffer *fb, const char *text, float x, float y,
                     GlyphCacheEntry *glyph_cache, FontMetricsCache metrics,
-                    SDL_Color color) {
+                    Color color) {
 
     float baseline = y + metrics.ascent;
     float x_pos = x;
@@ -22,17 +19,12 @@ void textRenderDraw(SDL_Renderer *renderer, const char *text, float x, float y,
         }
 
         GlyphCacheEntry glyph = glyph_cache[codepoint - 32];
-        SDL_Color glyph_color = color;
 
-        // Render the glyph if it has a texture (spaces don't)
-        if (glyph.texture != NULL) {
-            SDL_SetTextureColorMod(glyph.texture, glyph_color.r, glyph_color.g,
-                                   glyph_color.b);
-
-            SDL_FRect dst = {x_pos + glyph.xoff, baseline + glyph.yoff,
-                             (float)glyph.width, (float)glyph.height};
-
-            SDL_RenderTexture(renderer, glyph.texture, NULL, &dst);
+        // Render the glyph if it has a bitmap (spaces don't)
+        if (glyph.bitmap != NULL) {
+            int gx = (int)(x_pos + glyph.xoff + 0.5f);
+            int gy = (int)(baseline + glyph.yoff + 0.5f);
+            fb_blit_glyph(fb, gx, gy, glyph.bitmap, glyph.width, glyph.height, color);
         }
 
         x_pos += glyph.advance;
@@ -46,7 +38,7 @@ void textRenderDraw(SDL_Renderer *renderer, const char *text, float x, float y,
     }
 }
 
-void typedTextRenderDraw(SDL_Renderer *renderer, const char *text, float x,
+void typedTextRenderDraw(Framebuffer *fb, const char *text, float x,
                          float y, float font_size,
                          const unsigned char *char_states) {
     GlyphCacheEntry *glyph_cache = getGlyphCache();
@@ -65,14 +57,14 @@ void typedTextRenderDraw(SDL_Renderer *renderer, const char *text, float x,
             continue;
         }
 
-        GlyphCacheEntry glyph = glyph_cache[codepoint - 32];  // CACHE_START_CHAR is 32
+        GlyphCacheEntry glyph = glyph_cache[codepoint - 32];
 
         // If space has error state, show underscore instead so error is visible
         if (codepoint == ' ' && char_states[char_index] == 2) {
             glyph = glyph_cache['_' - 32];
         }
 
-        SDL_Color glyph_color = {0x00, 0x00, 0x00, 0x00};
+        Color glyph_color = {0x00, 0x00, 0x00, 0x00};
 
         switch (char_states[char_index]) {
         case 1:
@@ -86,16 +78,11 @@ void typedTextRenderDraw(SDL_Renderer *renderer, const char *text, float x,
             break;
         }
 
-        // Render the glyph if it has a texture (spaces don't)
-        if (glyph.texture != NULL) {
-            SDL_SetTextureColorMod(glyph.texture, glyph_color.r,
-                                   glyph_color.g, glyph_color.b);
-
-            SDL_FRect dst = {
-                x_pos + glyph.xoff, baseline + glyph.yoff,
-                (float)glyph.width, (float)glyph.height};
-
-            SDL_RenderTexture(renderer, glyph.texture, NULL, &dst);
+        // Render the glyph if it has a bitmap (spaces don't)
+        if (glyph.bitmap != NULL) {
+            int gx = (int)(x_pos + glyph.xoff + 0.5f);
+            int gy = (int)(baseline + glyph.yoff + 0.5f);
+            fb_blit_glyph(fb, gx, gy, glyph.bitmap, glyph.width, glyph.height, glyph_color);
         }
 
         x_pos += glyph.advance;
@@ -134,14 +121,14 @@ float textRenderMeasureVisibleWidth(const char *text, float font_size) {
     const char *p = text;
 
     for (; *p; p++) {
-        int codepoint = (unsigned char)(*p);  // Use unsigned to avoid negative values
+        int codepoint = (unsigned char)(*p);
 
         // Bounds check for glyph cache (32-126)
         if (codepoint < 32 || codepoint > 126) {
             continue;
         }
 
-        GlyphCacheEntry glyph = glyph_cache[codepoint - 32];  // CACHE_START_CHAR is 32
+        GlyphCacheEntry glyph = glyph_cache[codepoint - 32];
         total_width += glyph.advance;
 
         // Add kerning for consecutive characters
